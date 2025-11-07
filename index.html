@@ -3165,7 +3165,7 @@ async function getPopulationDensity(latlng) {
         options: {
           tileSize: 256, // 標準のタイルサイズ
           opacity: 0.6, // レイヤーの透明度
-          samplingResolution: 8, // タイル内のサンプリング解像度 (例: 8x8ピクセルごとに1回サンプリング)
+          samplingResolution: 24, // タイル内のサンプリング解像度 (例: 8x8ピクセルごとに1回サンプリング)
         },
 
         createTile: function (coords) {
