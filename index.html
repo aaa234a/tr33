@@ -10,7 +10,7 @@
       href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css"
     />
     <!-- GeoTIFF.js を追加 -->
-    <script src="https://unpkg.com/geotiff@0.4.0/dist/geotiff.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/geotiff@2.0.7/dist-browser/geotiff.js"></script>
 
     <style>
       /* 基本的なスタイル */
@@ -2987,88 +2987,80 @@
       // TIFFファイルのパス (ユーザーが同じディレクトリに置くという前提)
       var POPULATION_DENSITY_TIFF_PATH = "./zinkou.tif";
 
-async function loadPopulationDensityTiff() {
-  try {
-    ui.showMessage("人口密度データを読み込み中...", true);
+      /**
+       * 人口密度GeoTIFFファイルを読み込み、データを初期化する。
+       * 読み込みが完了したら、人口密度レイヤーをマップに追加する。
+       */
+      async function loadPopulationDensityTiff() {
+        try {
+          ui.showMessage("人口密度データを読み込み中...", true);
+          const tiff = await GeoTIFF.fromUrl(POPULATION_DENSITY_TIFF_PATH);
+          const image = await tiff.getImage(); // 最初のイメージを取得
 
-    // fetchでTIFFを取得
-    const response = await fetch(POPULATION_DENSITY_TIFF_PATH);
-    const arrayBuffer = await response.arrayBuffer();
+          populationDensityGeoTransform = image.getBoundingBox(); // [minX, minY, maxX, maxY]
+          populationDensityWidth = image.getWidth();
+          populationDensityHeight = image.getHeight();
 
-    // GeoTIFFを読み込む
-    const tiff = await GeoTIFF.fromArrayBuffer(arrayBuffer);
-    const image = await tiff.getImage();
+          // geotiff.jsが内部でimageオブジェクトをキャッシュするように、一度取得しておく
+          // getPixel() を使うために必要
+          populationDensityTiff = tiff; // TIFFオブジェクト全体を保持
+          populationDensityTiff._image = image; // imageオブジェクトも保持
 
-    populationDensityGeoTransform = image.getBoundingBox();
-    populationDensityWidth = image.getWidth();
-    populationDensityHeight = image.getHeight();
+          ui.showMessage(
+            "人口密度データの読み込みが完了しました。",
+            false,
+            3000
+          );
+          console.log(
+            "Population Density TIFF loaded:",
+            populationDensityGeoTransform,
+            "Width:",
+            populationDensityWidth,
+            "Height:",
+            populationDensityHeight
+          );
 
-    // getPixel() を作って既存コード互換にする
-    const rasters = await image.readRasters();
-    image.getPixel = function(x, y, band = 0) {
-      if (x < 0 || y < 0 || x >= populationDensityWidth || y >= populationDensityHeight) return [0];
-      return [rasters[band][y * populationDensityWidth + x]];
-    };
+          // ロード完了後に人口密度レイヤーを追加
+          addPopulationDensityLayer();
 
-    populationDensityTiff = { _image: image }; // 既存コード互換
-    ui.showMessage("人口密度データの読み込みが完了しました。", false, 3000);
-
-    console.log("Population Density TIFF loaded:", populationDensityGeoTransform,
-                "Width:", populationDensityWidth, "Height:", populationDensityHeight);
-
-    addPopulationDensityLayer();
-
-    for (var i = 0; i < state.stations.length; i++) {
-      setStationRevenueMultiplier(state.stations[i]);
-    }
-
-  } catch (error) {
-    console.error("人口密度TIFFの読み込みに失敗しました:", error);
-    ui.showMessage(
-      "人口密度データの読み込みに失敗しました。ファイルがサーバーに正しく配置されているか、パスが正しいか確認してください。",
-      false,
-      7000
-    );
-  }
-}
-
+          // 既存の駅があれば、人口密度に基づいて収益倍率を更新
+          for (var i = 0; i < state.stations.length; i++) {
+            setStationRevenueMultiplier(state.stations[i]);
+          }
+        } catch (error) {
+          console.error("人口密度TIFFの読み込みに失敗しました:", error);
+          ui.showMessage(
+            "人口密度データの読み込みに失敗しました。ファイルがサーバーに正しく配置されているか、パスが正しいか確認してください。",
+            false,
+            7000
+          );
+        }
+      }
 
       /**
        * 指定された緯度経度における人口密度を取得する。
        * @param {L.LatLng} latlng - 緯度経度。
        * @returns {number} - 人口密度。データがない場合は0。
        */
-      function getPopulationDensity(latlng) {
-        if (
-          !populationDensityTiff ||
-          !populationDensityGeoTransform ||
-          !populationDensityTiff._image
-        ) {
-          return 0; // データがロードされていない
-        }
+async function getPopulationDensity(latlng) {
+  if (!populationDensityTiff || !populationDensityGeoTransform) return 0;
 
-        const [minX, minY, maxX, maxY] = populationDensityGeoTransform;
-        const pixelWidth = (maxX - minX) / populationDensityWidth;
-        const pixelHeight = (maxY - minY) / populationDensityHeight;
+  const [minX, minY, maxX, maxY] = populationDensityGeoTransform;
+  const pixelWidth = (maxX - minX) / populationDensityWidth;
+  const pixelHeight = (maxY - minY) / populationDensityHeight;
 
-        // 緯度経度をピクセル座標に変換 (WorldPopデータは通常WGS84 (経度, 緯度))
-        // GeoTIFFのY軸は上から下へ増加することが多いため、緯度方向は maxY から引く
-        const col = Math.floor((latlng.lng - minX) / pixelWidth);
-        const row = Math.floor((maxY - latlng.lat) / pixelHeight);
+  const col = Math.floor((latlng.lng - minX) / pixelWidth);
+  const row = Math.floor((maxY - latlng.lat) / pixelHeight);
 
-        if (
-          col < 0 ||
-          col >= populationDensityWidth ||
-          row < 0 ||
-          row >= populationDensityHeight
-        ) {
-          return 0; // 範囲外
-        }
+  if (col < 0 || col >= populationDensityWidth || row < 0 || row >= populationDensityHeight)
+    return 0;
 
-        // `getPixel` は非同期ではないため、同期的にピクセル値を取得
-        const pixel = populationDensityTiff._image.getPixel(col, row);
-        return pixel && pixel.length > 0 ? pixel[0] : 0; // 最初のバンドの値を取得
-      }
+  // 画像からラスタを取得
+  const image = await populationDensityTiff.getImage();
+  const rasters = await image.readRasters({ window: [col, row, col + 1, row + 1] });
+  return rasters[0][0]; // 最初のバンドの値
+}
+
 
       /**
        * 駅の収益倍率を人口密度に基づいて設定し、ポップアップを更新する。
@@ -3243,22 +3235,7 @@ async function loadPopulationDensityTiff() {
       document.addEventListener("DOMContentLoaded", function () {
         loadPopulationDensityTiff(); // ページロード時に人口密度データを読み込む
       });
-  async function createPixelReader(tiffUrl) {
-    const tiff = await GeoTIFF.fromUrl(tiffUrl);
-    const image = await tiff.getImage();
-    const width = image.getWidth();
-    const height = image.getHeight();
-    const rasters = await image.readRasters();
 
-    function getPixel(x, y, band = 0) {
-      if (x < 0 || y < 0 || x >= width || y >= height) {
-        throw new Error("座標が範囲外です");
-      }
-      return rasters[band][y * width + x];
-    }
-
-    return getPixel;
-  }
     </script>
   </body>
 </html>
