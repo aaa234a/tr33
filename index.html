@@ -1,0 +1,3252 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Rail Builder Pro</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
+    <link
+      rel="stylesheet"
+      href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css"
+    />
+    <!-- GeoTIFF.js を追加 -->
+    <script src="https://cdn.jsdelivr.net/npm/geotiff@2.0.7/dist/geotiff.min.js"></script>
+
+    <style>
+      /* 基本的なスタイル */
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+        padding: 0;
+        font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+        background-color: #f8f9fa; /* 全体の背景色 */
+        color: #333;
+      }
+      #map {
+        height: 100%;
+        width: 100%;
+        cursor: default;
+      }
+
+      /* トップレベルのパネル (left-panel, finance-panel) */
+      .panel {
+        position: absolute;
+        z-index: 1000;
+        background: rgba(255, 255, 255, 0.95); /* 背景を少し不透明に */
+        padding: 15px; /* パディングを増やす */
+        border-radius: 10px; /* 角を丸く */
+        box-shadow: 0 4px 10px rgba(0, 0, 0, 0.15); /* 影を強調 */
+        border: 1px solid #e0e0e0; /* 軽いボーダー */
+      }
+      #left-panel {
+        top: 15px;
+        left: 15px;
+        width: 280px; /* 幅を少し広げる */
+        max-height: calc(100% - 30px); /* 画面の高さに合わせて最大高さを設定 */
+        overflow-y: auto; /* 内容が多い場合にスクロール可能に */
+        display: flex;
+        flex-direction: column;
+        gap: 15px; /* 子パネル間のスペースを増やす */
+      }
+      #finance-panel {
+        top: 15px;
+        right: 15px;
+        width: 220px; /* 幅を少し広げる */
+        text-align: right; /* テキストを右寄せ */
+        font-size: 1.1em;
+        font-weight: bold;
+        color: #007bff; /* 強調色 */
+      }
+      #finance-panel span {
+        color: #28a745; /* 資産の色 */
+      }
+      #message-bar {
+        position: absolute;
+        bottom: 25px; /* 下からの位置を少し上げる */
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 1000;
+        background: rgba(0, 0, 0, 0.85); /* 背景をより濃く */
+        color: white;
+        padding: 10px 20px; /* パディングを増やす */
+        border-radius: 25px; /* 角をさらに丸く */
+        font-size: 1.1em;
+        opacity: 0;
+        transition: opacity 0.4s ease-in-out; /* トランジションを長く */
+        pointer-events: none;
+        white-space: nowrap;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+      }
+
+      /* left-panel の子要素のパネル (build-menu, train-shop, line-builder) */
+      /* これらはFlexアイテムとしてレイアウトされるため、positionはstatic */
+      #left-panel > .panel {
+        background: #fdfdfd; /* 子パネルの背景色 */
+        padding: 15px;
+        box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1); /* 軽い影 */
+        position: static; /* 絶対配置を解除 */
+        width: auto; /* 幅を親に合わせる */
+        margin-bottom: 0; /* gapでスペースを確保するため不要 */
+        border: 1px solid #f0f0f0;
+      }
+      #left-panel > .panel h3 {
+        margin-top: 0;
+        margin-bottom: 15px;
+        color: #007bff;
+        font-size: 1.2em;
+        border-bottom: 2px solid #eee;
+        padding-bottom: 8px;
+      }
+      #left-panel > .panel h4 {
+        margin-top: 15px;
+        margin-bottom: 10px;
+        color: #555;
+        font-size: 1em;
+      }
+
+      /* マップ上の表示物 */
+      .track-line {
+        weight: 4;
+        opacity: 0.9;
+      }
+      .track-ground {
+        color: #444;
+      }
+      .track-viaduct {
+        color: #888;
+      }
+      .track-tunnel {
+        color: #666;
+        dasharray: "10,10";
+      }
+
+      .station-platform {
+        color: #d9534f;
+        weight: 6;
+        opacity: 0.9;
+      }
+      .station-marker {
+        width: 16px;
+        height: 16px;
+        border-radius: 50%;
+        background: #d9534f;
+        border: 2px solid #fff;
+        box-shadow: 0 0 5px rgba(0, 0, 0, 0.5);
+        cursor: pointer;
+        transition: transform 0.1s ease-out; /* ホバー時のアニメーション */
+      }
+      .station-marker:hover {
+        transform: scale(1.2); /* ホバーで少し拡大 */
+      }
+      .station-marker.selected-for-line {
+        background: #007bff; /* 路線設定で選択された駅の色 */
+        border-color: #007bff;
+        box-shadow: 0 0 8px rgba(0, 123, 255, 0.7);
+      }
+      /* 路線設定で選択された駅マーカーのスタイルをさらに調整（駅クリック時に適用される）*/
+      .station-marker-selectable {
+        cursor: pointer;
+      }
+
+      /* 解体モードで選択されたオブジェクトのスタイル */
+      .track-line.selected-for-demolition,
+      .station-platform.selected-for-demolition {
+        outline: 3px solid #dc3545; /* 赤いアウトライン */
+        outline-offset: 3px; /* アウトラインを外側に表示 */
+        box-shadow: 0 0 10px rgba(220, 53, 69, 0.8);
+      }
+      .station-marker.selected-for-demolition {
+        background: #dc3545; /* マーカーも赤く */
+        border-color: #dc3545;
+        box-shadow: 0 0 8px rgba(220, 53, 69, 0.7);
+      }
+
+      .line-color {
+        weight: 5;
+        dasharray: "";
+        opacity: 0.8;
+      }
+
+      /* ボタンのスタイル */
+      button {
+        margin: 4px 0; /* マージンを調整 */
+        padding: 10px 15px; /* パディングを増やす */
+        border-radius: 5px; /* 角を丸く */
+        cursor: pointer;
+        border: 1px solid #007bff; /* メインカラーのボーダー */
+        background: #007bff; /* メインカラーの背景 */
+        color: white; /* 文字色を白に */
+        font-weight: bold;
+        transition: background 0.2s, color 0.2s, border-color 0.2s,
+          box-shadow 0.2s;
+        width: 100%;
+        box-sizing: border-box;
+        box-shadow: 0 2px 4px rgba(0, 123, 255, 0.2);
+      }
+      button:hover {
+        background: #0056b3; /* ホバーで少し暗く */
+        border-color: #0056b3;
+        box-shadow: 0 4px 8px rgba(0, 123, 255, 0.3);
+      }
+      button.active {
+        background: #28a745; /* アクティブなボタンは緑色に */
+        border-color: #28a745;
+        box-shadow: 0 2px 4px rgba(40, 167, 69, 0.3);
+      }
+      button.active:hover {
+        background: #218838;
+        border-color: #218838;
+      }
+      button:disabled {
+        background: #e9ecef;
+        color: #6c757d;
+        cursor: not-allowed;
+        border-color: #dee2e6;
+        box-shadow: none;
+      }
+      /* 特定のボタンのスタイル調整 */
+      #confirm-build,
+      #confirm-line-build,
+      #confirm-demolition {
+        background: #ffc107; /* 確定ボタンは警告色 */
+        border-color: #ffc107;
+        color: #333;
+      }
+      #confirm-build:hover,
+      #confirm-line-build:hover,
+      #confirm-demolition:hover {
+        background: #e0a800;
+        border-color: #e0a800;
+      }
+      #cancel-line-build,
+      #cancel-demolition {
+        background: #dc3545; /* キャンセルボタンは危険色 */
+        border-color: #dc3545;
+      }
+      #cancel-line-build:hover,
+      #cancel-demolition:hover {
+        background: #c82333;
+        border-color: #c82333;
+      }
+      #demolition-mode-btn {
+        background: #6c757d; /* 解体モードは灰色 */
+        border-color: #6c757d;
+      }
+      #demolition-mode-btn:hover {
+        background: #5a6268;
+        border-color: #5a6268;
+      }
+      #demolition-mode-btn.active {
+        background: #dc3545; /* アクティブな解体モードは赤 */
+        border-color: #dc3545;
+      }
+      #demolition-mode-btn.active:hover {
+        background: #c82333;
+        border-color: #c82333;
+      }
+
+      hr {
+        border: none;
+        border-top: 1px solid #eee;
+        margin: 15px 0;
+      }
+
+      /* 列車ショップ */
+      #train-list,
+      #bought-trains-list {
+        max-height: 250px; /* 高さを調整 */
+        overflow-y: auto;
+        border: 1px solid #ddd; /* ボーダーを調整 */
+        border-radius: 6px;
+        padding: 8px;
+        margin-bottom: 10px;
+        background: #fff;
+      }
+      .train-item {
+        display: flex;
+        align-items: center;
+        padding: 10px;
+        margin-bottom: 6px;
+        border: 1px solid #eee;
+        border-radius: 5px;
+        cursor: pointer;
+        background: #f9f9f9;
+        transition: background 0.2s, border-color 0.2s, box-shadow 0.2s;
+      }
+      .train-item:hover {
+        background: #f0f0f0;
+        border-color: #ccc;
+        box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);
+      }
+      .train-item.selected {
+        border-color: #007bff;
+        background: #e7f3ff;
+        box-shadow: 0 2px 8px rgba(0, 123, 255, 0.2);
+      }
+      .train-item-color-box {
+        width: 24px; /* サイズを少し大きく */
+        height: 24px;
+        border-radius: 4px;
+        margin-right: 12px;
+        border: 1px solid #ccc;
+        flex-shrink: 0; /* 縮まないように */
+      }
+      .train-item-details {
+        flex-grow: 1;
+      }
+      .train-item-details h4 {
+        margin: 0;
+        font-size: 1.1em;
+        color: #333;
+      }
+      .train-item-details p {
+        margin: 0;
+        font-size: 0.85em;
+        color: #666;
+      }
+
+      /* 路線設定 */
+      #selected-stations-list {
+        max-height: 180px; /* 高さを調整 */
+        overflow-y: auto;
+        border: 1px solid #ddd;
+        border-radius: 6px;
+        padding: 8px;
+        margin-bottom: 10px;
+        background: #fff;
+      }
+      .selected-station-item {
+        padding: 8px;
+        margin-bottom: 5px;
+        background: #f0f8ff; /* 選択された駅の背景色 */
+        border: 1px solid #b0e0e6;
+        border-radius: 4px;
+        font-size: 0.95em;
+        color: #444;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+      .selected-station-item span {
+        font-weight: bold;
+        margin-right: 8px;
+        color: #007bff;
+      }
+      .selected-station-item button {
+        width: auto;
+        padding: 4px 10px;
+        font-size: 0.8em;
+        margin: 0;
+        background: #dc3545;
+        color: white;
+        border: none;
+        box-shadow: none;
+      }
+      .selected-station-item button:hover {
+        background: #c82333;
+      }
+
+      /* 列車車両 */
+      .train-car-container {
+        /* L.divIconのルート要素。iconSizeで指定されるサイズ */
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        pointer-events: none; /* マップ操作の邪魔にならないように */
+      }
+      .train-car-body {
+        /* 実際の車両の長方形 */
+        border-radius: 2px;
+        box-shadow: 0 0 3px rgba(0, 0, 0, 0.5);
+        border: 1px solid rgba(0, 0, 0, 0.2);
+        /* transform: rotate() はJSで設定 */
+      }
+
+      /* ドロップダウン */
+      select {
+        width: 100%;
+        margin-top: 5px;
+        padding: 10px;
+        border-radius: 5px;
+        border: 1px solid #ccc;
+        background-color: #fff;
+        font-size: 1em;
+        box-sizing: border-box;
+        appearance: none; /* デフォルトの矢印を非表示に */
+        background-image: url("data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22%23007bff%22%20d%3D%22M287%2069.4a17.6%2017.6%200%200%200-13-5.4H18.4c-6.5%200-12.1%203.2-15.1%208.1-3%204.9-2.6%2011.3%201.3%2015.2l129.5%20129.5c2.4%202.4%205.8%204.1%209.5%204.1s7.1-1.7%209.5-4.1L285.4%2084.6c3.8-3.9%204.3-10.3%201.3-15.2z%22%2F%3E%3C%2Fsvg%3E");
+        background-repeat: no-repeat;
+        background-position: right 10px center;
+        background-size: 12px;
+      }
+      select:focus {
+        border-color: #007bff;
+        outline: none;
+        box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.25);
+      }
+
+      /* モバイル対応 */
+      @media (max-width: 768px) {
+        /* ブレークポイントを調整 */
+        #left-panel {
+          width: calc(100% - 30px); /* 左右15pxマージン */
+          left: 15px;
+          right: 15px;
+          top: 15px;
+          max-height: calc(70% - 30px); /* 画面の70%に制限 */
+          flex-direction: column;
+        }
+        #finance-panel {
+          width: calc(100% - 30px);
+          right: 15px;
+          top: auto; /* 上からの位置指定を解除 */
+          bottom: 15px; /* 下に配置 */
+          text-align: center; /* 中央寄せ */
+          padding: 10px;
+          font-size: 1em;
+        }
+        #message-bar {
+          bottom: 10px; /* さらに下げる */
+          font-size: 0.9em;
+          padding: 8px 15px;
+        }
+        .panel {
+          padding: 10px;
+        }
+        #left-panel > .panel {
+          padding: 10px;
+        }
+        button {
+          padding: 8px 12px;
+          font-size: 0.9em;
+        }
+        select {
+          padding: 8px;
+          font-size: 0.9em;
+        }
+        .train-item {
+          padding: 8px;
+        }
+        .train-item-details h4 {
+          font-size: 1em;
+        }
+        .train-item-details p {
+          font-size: 0.8em;
+        }
+        .selected-station-item {
+          padding: 6px;
+          font-size: 0.85em;
+        }
+        .selected-station-item button {
+          padding: 3px 8px;
+          font-size: 0.75em;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="map"></div>
+
+    <div id="left-panel" class="panel">
+      <div id="build-menu" class="panel">
+        <h3>建設メニュー</h3>
+        <button id="build-ground">
+          地上線 ($<span id="cost-ground"></span>/m)
+        </button>
+        <button id="build-viaduct">
+          高架線 ($<span id="cost-viaduct"></span>/m)
+        </button>
+        <button id="build-tunnel">
+          トンネル ($<span id="cost-tunnel"></span>/m)
+        </button>
+        <!-- 駅のコスト表示を基本料金と1mあたりの料金に変更 -->
+        <button id="build-station">駅 (基本 $50,000 + $1000/m)</button>
+        <hr />
+        <button id="confirm-build" disabled>建設確定</button>
+      </div>
+
+      <div id="train-shop" class="panel">
+        <h3>列車ショップ</h3>
+        <h4>購入可能な列車</h4>
+        <div id="train-list">
+          <!-- 列車アイテムがここに追加される -->
+        </div>
+        <button id="buy-train-btn" disabled>選択した列車を購入</button>
+        <hr />
+        <h4>購入済み列車</h4>
+        <div id="bought-trains-list">
+          <!-- 購入済み列車アイテムがここに追加される -->
+        </div>
+        <select
+          id="line-select-for-assignment"
+          style="
+            width: 100%;
+            margin-top: 5px;
+            padding: 8px;
+            border-radius: 4px;
+            border: 1px solid #ccc;
+          "
+        ></select>
+        <button id="assign-train-to-line-btn" disabled>
+          選択した列車を路線に割り当てる
+        </button>
+      </div>
+
+      <div id="line-builder" class="panel">
+        <h3>路線設定</h3>
+        <button id="start-line-build">路線設定開始</button>
+        <div id="selected-stations-list">
+          <!-- 選択された駅がここに追加される -->
+        </div>
+        <!-- 路線確定ボタンのコスト表示を基本料金と1mあたりの料金に変更 -->
+        <button id="confirm-line-build" disabled>
+          路線確定 (基本 $10,000 + $500/m)
+        </button>
+        <button id="cancel-line-build">キャンセル</button>
+      </div>
+
+      <!-- 解体メニューを追加 -->
+      <div id="demolition-menu" class="panel">
+        <h3>解体メニュー</h3>
+        <button id="demolition-mode-btn">解体モード</button>
+        <div
+          id="demolition-info"
+          style="margin-top: 10px; font-size: 0.9em; color: #555"
+        >
+          <p>マップ上の線路や駅をクリックして選択してください。</p>
+          <p id="selected-demolition-target"></p>
+        </div>
+        <button id="confirm-demolition" disabled>解体確定</button>
+        <button id="cancel-demolition">解体キャンセル</button>
+      </div>
+
+      <!-- セーブ/ロードメニューを追加 -->
+      <div id="save-load-menu" class="panel">
+        <h3>セーブ/ロード</h3>
+        <button id="save-game-btn">ゲームをセーブ</button>
+        <button id="load-game-btn">ゲームをロード</button>
+      </div>
+    </div>
+
+    <div id="finance-panel" class="panel">
+      <p>資産: <span id="assets-display">$0</span></p>
+    </div>
+
+    <div id="message-bar"></div>
+
+    <script>
+      // ===================================================================
+      // ES5互換性対応: ポリフィル相当の定義 (変更なし)
+      // ===================================================================
+
+      if (!Array.prototype.find) {
+        Array.prototype.find = function (predicate) {
+          var list = Object(this);
+          var length = list.length >>> 0;
+          if (typeof predicate !== "function") {
+            throw new TypeError("predicate must be a function");
+          }
+          for (var i = 0; i < length; i++) {
+            var value = list[i];
+            if (predicate.call(arguments, value, i, list)) {
+              return value;
+            }
+          }
+          return undefined;
+        };
+      }
+      if (!Array.prototype.includes) {
+        Array.prototype.includes = function (searchElement /*, fromIndex */) {
+          var O = Object(this);
+          var len = O.length >>> 0;
+          if (len === 0) {
+            return false;
+          }
+          var n =
+            arguments.length > 1 && arguments[1] !== undefined
+              ? arguments[1]
+              : 0;
+          var k;
+          if (n >= 0) {
+            k = n;
+          } else {
+            k = len - Math.abs(n);
+          }
+          while (k < len) {
+            var element = O[k];
+            if (
+              element === searchElement ||
+              (element !== element && searchElement !== searchElement)
+            ) {
+              return true;
+            }
+            k++;
+          }
+          return false;
+        };
+      }
+      if (!Array.prototype.findIndex) {
+        Array.prototype.findIndex = function (predicate) {
+          var list = Object(this);
+          var length = list.length >>> 0;
+          if (typeof predicate !== "function") {
+            throw new TypeError("predicate must be a function");
+          }
+          for (var i = 0; i < length; i++) {
+            var value = list[i];
+            if (predicate.call(arguments, value, i, list)) {
+              return i;
+            }
+          }
+          return -1;
+        };
+      }
+      if (!L.Polyline.prototype.getLatLngs) {
+        // For older Leaflet versions if needed
+        L.Polyline.prototype.getLatLngs = function () {
+          return this._latlngs;
+        };
+      }
+      if (!L.Polyline.prototype.setLatLngs) {
+        // For older Leaflet versions if needed
+        L.Polyline.prototype.setLatLngs = function (latlngs) {
+          this._latlngs = this._convertLatLngs(latlngs);
+          return this.redraw();
+        };
+      }
+      if (!("equals" in L.LatLng.prototype)) {
+        L.LatLng.prototype.equals = function (otherLatLng, margin) {
+          if (!otherLatLng) {
+            return false;
+          }
+          otherLatLng = L.latLng(otherLatLng);
+          var margin = Math.max(
+            Math.abs(this.lat - otherLatLng.lat),
+            Math.abs(this.lng - otherLatLng.lng)
+          );
+          return margin <= (margin === undefined ? 1.0e-9 : margin);
+        };
+      }
+
+      // ===================================================================
+      // CONFIG: ゲームの設定値 (const -> var)
+      // ===================================================================
+      var CONFIG = {
+        initialAssets: 5000000, // 初期資産
+        costs: {
+          // 各種建設コスト
+          ground: { perMeter: 10 }, // 1mあたり10ドル
+          viaduct: { perMeter: 30 }, // 1mあたり30ドル
+          tunnel: { perMeter: 60 }, // 1mあたり60ドル
+          station: {
+            // 駅のコストは基本料金とプラットフォーム長に応じた費用
+            base: 50000,
+            perMeter: 1000, // 1メートルあたりの費用
+          },
+          line: {
+            // 路線のコストは基本料金と総距離に応じた費用
+            base: 10000,
+            perMeter: 500, // 1メートルあたりの費用
+          },
+        },
+        revenuePerStationStop: 10000, // 駅に停車するたびに得られる基本収益
+        // 列車種類を実在のものに修正
+        trains: [
+          {
+            id: "e233",
+            name: "E233系通勤電車",
+            cars: 10,
+            cost: 1000000,
+            color: "#007bff",
+            defaultSpeed: 100,
+          }, // 10両編成、コスト100万、時速100km
+          {
+            id: "e259",
+            name: "E259系成田エクスプレス",
+            cars: 6,
+            cost: 1500000,
+            color: "#d9534f",
+            defaultSpeed: 130,
+          }, // 6両編成、コスト150万、時速130km
+          {
+            id: "n700s",
+            name: "N700S系新幹線",
+            cars: 16,
+            cost: 5000000,
+            color: "#5cb85c",
+            defaultSpeed: 285,
+          }, // 16両編成、コスト500万、時速285km
+        ],
+        trainCarDimensionsMeters: {
+          // 車両のサイズ (メートル)
+          length: 20, // 車両の進行方向の長さ
+          width: 3, // 車両の幅
+        },
+        lineColors: [
+          "#FF0000",
+          "#0000FF",
+          "#00FF00",
+          "#FFFF00",
+          "#00FFFF",
+          "#FF00FF",
+          "#FF8C00",
+          "#8A2BE2",
+        ], // 路線に割り当てる色
+        trainStopDuration: 500, // 駅での停車時間 (ms)
+        updateInterval: 50, // 列車の位置更新間隔 (ms)
+        snapThresholdPixels: 15, // スナップ判定のピクセル距離
+        snapThresholdMeters: 20, // 線路接続判定のメートル距離
+      };
+
+      // --- GAME STATE: ゲームの現在の状態を保持するオブジェクト (let -> var) ---
+      var state = {
+        assets: CONFIG.initialAssets, // 現在の資産
+        tracks: [], // 建設済みの線路オブジェクトの配列
+        stations: [], // 建設済みの駅オブジェクトの配列
+        lines: [], // 確定した路線オブジェクトの配列
+        trains: [], // 購入済み列車オブジェクトの配列
+        planning: {
+          // 線路・駅建設モードの状態
+          type: null, // 'ground', 'viaduct', 'tunnel', 'station'
+          points: [], // 建設中の点の配列 (LatLng)
+          ghost: null, // 建設中の仮ポリライン/マーカー (Leaflet Layer)
+        },
+        lineBuildingMode: false, // 路線設定モードかどうか
+        selectedStationsForLine: [], // 路線設定中に選択された駅のIDリスト
+        currentLineGhost: null, // 路線設定中の仮ポリライン (Leaflet Layer)
+        selectedTrainToBuyId: null, // ショップで選択中の列車ID
+        currentLineColorIndex: 0, // 次の路線に割り当てる色のインデックス
+        selectedTrainToAssignId: null, // 路線に割り当てるために選択中の列車ID
+        demolitionMode: false, // 解体モードかどうか
+        selectedForDemolition: null, // 解体モードで選択されたオブジェクト { type: 'track'|'station', id: string }
+      };
+
+      // --- MAP: Leafletマップの初期化 ---
+      var map = L.map("map", { preferCanvas: true }).setView(
+        [35.68, 139.76],
+        13
+      ); // 東京駅周辺を初期表示
+      L.tileLayer(
+        "https://{s}.basemaps.cartocdn.com/rastertiles/voyager_nolabels/{z}/{x}/{y}{r.png}",
+        {
+          attribution: "&copy; CARTO",
+          maxZoom: 19,
+        }
+      ).addTo(map);
+
+      // --- UI ELEMENTS: UI要素への参照とUI操作関数 ---
+      var ui = {
+        assetsDisplay: document.getElementById("assets-display"),
+        messageBar: document.getElementById("message-bar"),
+        buildButtons: document.querySelectorAll(
+          "#build-menu button:not(#confirm-build)"
+        ),
+        confirmBuildButton: document.getElementById("confirm-build"),
+        trainListDiv: document.getElementById("train-list"),
+        buyTrainButton: document.getElementById("buy-train-btn"),
+        startLineBuildButton: document.getElementById("start-line-build"),
+        selectedStationsListDiv: document.getElementById(
+          "selected-stations-list"
+        ),
+        confirmLineBuildButton: document.getElementById("confirm-line-build"),
+        cancelLineBuildButton: document.getElementById("cancel-line-build"),
+        boughtTrainsListDiv: document.getElementById("bought-trains-list"),
+        assignTrainToLineButton: document.getElementById(
+          "assign-train-to-line-btn"
+        ),
+        lineSelectForAssignment: document.getElementById(
+          "line-select-for-assignment"
+        ),
+        demolitionModeButton: document.getElementById("demolition-mode-btn"),
+        selectedDemolitionTargetDisplay: document.getElementById(
+          "selected-demolition-target"
+        ),
+        confirmDemolitionButton: document.getElementById("confirm-demolition"),
+        cancelDemolitionButton: document.getElementById("cancel-demolition"),
+        saveGameButton: document.getElementById("save-game-btn"),
+        loadGameButton: document.getElementById("load-game-btn"),
+        costGround: document.getElementById("cost-ground"),
+        costViaduct: document.getElementById("cost-viaduct"),
+        costTunnel: document.getElementById("cost-tunnel"),
+
+        /**
+         * ユーザーにメッセージを表示する。
+         * @param {string} msg - 表示するメッセージ。
+         * @param {boolean} [persistent=false] - メッセージを永続的に表示するかどうか。
+         * @param {number} [duration=3000] - メッセージを表示する時間 (ミリ秒)。
+         */
+        showMessage: function (msg, persistent, duration) {
+          if (persistent === undefined) persistent = false;
+          if (duration === undefined) duration = 3000;
+
+          this.messageBar.textContent = msg;
+          this.messageBar.style.opacity = 1;
+          if (!persistent) {
+            clearTimeout(this.messageBar.hideTimeout); // 既存のタイマーをクリア
+            this.messageBar.hideTimeout = setTimeout(function () {
+              ui.messageBar.style.opacity = 0;
+            }, duration);
+          }
+        },
+
+        /** 資産表示を更新する。 */
+        updateFinance: function () {
+          this.assetsDisplay.textContent =
+            "$" + Math.floor(state.assets).toLocaleString();
+        },
+
+        /** 列車ショップのUIを更新する。 */
+        renderTrainShop: function () {
+          var self = this;
+
+          // 購入可能な列車リストの更新
+          this.trainListDiv.innerHTML = "";
+          var i, train;
+          for (i = 0; i < CONFIG.trains.length; i++) {
+            train = CONFIG.trains[i];
+            var trainItem = document.createElement("div");
+            trainItem.className = self.trainItemClass(train.id, "buy");
+            trainItem.dataset.trainId = train.id;
+            trainItem.innerHTML =
+              '<div class="train-item-color-box" style="background-color:' +
+              train.color +
+              ';"></div>' +
+              '<div class="train-item-details">' +
+              "<h4>" +
+              train.name +
+              "</h4>" +
+              "<p>" +
+              train.cars +
+              "両 - $" +
+              train.cost.toLocaleString() +
+              "</p>" +
+              "</div>";
+
+            trainItem.onclick = function () {
+              selectTrainToBuy(this.dataset.trainId);
+            };
+            this.trainListDiv.appendChild(trainItem);
+          }
+
+          var selectedTrainCost = state.selectedTrainToBuyId
+            ? CONFIG.trains.find(function (t) {
+                return t.id === state.selectedTrainToBuyId;
+              }).cost
+            : null;
+
+          this.buyTrainButton.disabled =
+            !state.selectedTrainToBuyId || state.assets < selectedTrainCost;
+          this.buyTrainButton.textContent = state.selectedTrainToBuyId
+            ? "選択した列車を購入 ($" +
+              (selectedTrainCost ? selectedTrainCost.toLocaleString() : "0") +
+              ")"
+            : "選択した列車を購入";
+
+          // 購入済み列車リストの更新
+          this.boughtTrainsListDiv.innerHTML = "";
+          if (state.trains.length === 0) {
+            this.boughtTrainsListDiv.innerHTML =
+              '<p style="text-align:center; color:#999; font-size:0.9em;">購入済みの列車はありません。</p>';
+          }
+
+          for (i = 0; i < state.trains.length; i++) {
+            train = state.trains[i];
+            var trainItem = document.createElement("div");
+            trainItem.className = self.trainItemClass(train.id, "assign");
+            trainItem.dataset.trainId = train.id;
+            var assignedLine = train.currentLineId
+              ? getLineById(train.currentLineId)
+              : null;
+            trainItem.innerHTML =
+              '<div class="train-item-color-box" style="background-color:' +
+              train.color +
+              ';"></div>' +
+              '<div class="train-item-details">' +
+              "<h4>" +
+              train.name +
+              "</h4>" +
+              "<p>" +
+              (assignedLine ? "路線: " + assignedLine.name : "未割り当て") +
+              "</p>" +
+              "</div>";
+
+            trainItem.onclick = function () {
+              selectTrainToAssign(this.dataset.trainId);
+            };
+            this.boughtTrainsListDiv.appendChild(trainItem);
+          }
+
+          // 割り当て用路線選択ドロップダウンの更新
+          this.lineSelectForAssignment.innerHTML =
+            '<option value="">路線を選択...</option>';
+          var line;
+          for (i = 0; i < state.lines.length; i++) {
+            line = state.lines[i];
+            var option = document.createElement("option");
+            option.value = line.id;
+            option.textContent = line.name;
+            this.lineSelectForAssignment.appendChild(option);
+          }
+
+          // 現在選択されている路線があればそれを選択状態にする
+          if (state.selectedTrainToAssignId) {
+            var selectedTrain = state.trains.find(function (t) {
+              return t.id === state.selectedTrainToAssignId;
+            });
+            if (selectedTrain && selectedTrain.currentLineId) {
+              this.lineSelectForAssignment.value = selectedTrain.currentLineId;
+            } else {
+              this.lineSelectForAssignment.value = "";
+            }
+          } else {
+            this.lineSelectForAssignment.value = "";
+          }
+
+          this.assignTrainToLineButton.disabled =
+            !state.selectedTrainToAssignId ||
+            !this.lineSelectForAssignment.value;
+        },
+
+        trainItemClass: function (id, type) {
+          var baseClass = "train-item";
+          if (type === "buy" && state.selectedTrainToBuyId === id)
+            baseClass += " selected";
+          if (type === "assign" && state.selectedTrainToAssignId === id)
+            baseClass += " selected";
+          return baseClass;
+        },
+
+        /** 路線設定モードで選択された駅リストを更新する。 */
+        updateSelectedStationsForLine: function () {
+          var self = this;
+          this.selectedStationsListDiv.innerHTML = "";
+          if (state.selectedStationsForLine.length === 0) {
+            this.selectedStationsListDiv.innerHTML =
+              '<p style="text-align:center; color:#999; font-size:0.9em;">駅を選択してください</p>';
+          }
+
+          for (var i = 0; i < state.selectedStationsForLine.length; i++) {
+            var stationId = state.selectedStationsForLine[i];
+            var station = getStationById(stationId);
+            if (station) {
+              var item = document.createElement("div");
+              item.className = "selected-station-item";
+              item.innerHTML =
+                "<span>" +
+                (i + 1) +
+                ".</span> " +
+                station.name +
+                ' <button data-station-id="' +
+                stationId +
+                '">削除</button>';
+
+              item.querySelector("button").onclick = function (e) {
+                e.stopPropagation(); // 親要素のクリックイベントが発火しないように
+                removeStationFromLineBuilding(this.dataset.stationId);
+              };
+              this.selectedStationsListDiv.appendChild(item);
+            }
+          }
+
+          // 路線確定ボタンのテキストと有効/無効状態を動的に更新
+          var potentialLineLength = 0;
+          var pathFound = true;
+          if (state.selectedStationsForLine.length >= 2) {
+            for (var j = 0; j < state.selectedStationsForLine.length - 1; j++) {
+              var startStation = getStationById(
+                state.selectedStationsForLine[j]
+              );
+              var endStation = getStationById(
+                state.selectedStationsForLine[j + 1]
+              );
+              if (startStation && endStation) {
+                var segmentPath = findPathBetweenStations_GraphSearch(
+                  startStation.latlng,
+                  endStation.latlng
+                );
+                if (segmentPath) {
+                  potentialLineLength += calculatePathDistance(segmentPath);
+                } else {
+                  pathFound = false;
+                  break;
+                }
+              }
+            }
+          }
+          var potentialLineCost =
+            CONFIG.costs.line.base +
+            CONFIG.costs.line.perMeter * potentialLineLength;
+
+          this.confirmLineBuildButton.disabled =
+            state.selectedStationsForLine.length < 2 ||
+            state.assets < potentialLineCost ||
+            !pathFound;
+          this.confirmLineBuildButton.textContent =
+            "路線確定 ($" +
+            Math.round(potentialLineCost).toLocaleString() +
+            ")";
+        },
+
+        /** 建設メニューのボタンのアクティブ状態を設定する。 */
+        setBuildModeActive: function (type) {
+          var i, btn;
+          for (i = 0; i < this.buildButtons.length; i++) {
+            btn = this.buildButtons[i];
+            if (btn.id === "build-" + type) {
+              btn.classList.add("active");
+            } else {
+              btn.classList.remove("active");
+            }
+          }
+          // 建設確定ボタンは、点を配置するまで無効
+          this.confirmBuildButton.disabled = true;
+          this.confirmBuildButton.textContent = "建設確定";
+        },
+
+        /** 建設メニューのボタンのアクティブ状態をリセットする。 */
+        resetBuildModeActive: function () {
+          var i, btn;
+          for (i = 0; i < this.buildButtons.length; i++) {
+            btn = this.buildButtons[i];
+            btn.classList.remove("active");
+          }
+          this.confirmBuildButton.disabled = true;
+          this.confirmBuildButton.textContent = "建設確定";
+        },
+
+        /** 路線設定関連UIの表示/非表示を切り替える。 */
+        setLineBuildModeActive: function (active) {
+          if (active) {
+            this.startLineBuildButton.classList.add("active");
+            this.confirmLineBuildButton.style.display = "block";
+            this.cancelLineBuildButton.style.display = "block";
+            this.selectedStationsListDiv.style.display = "block";
+          } else {
+            this.startLineBuildButton.classList.remove("active");
+            this.confirmLineBuildButton.style.display = "none";
+            this.cancelLineBuildButton.style.display = "none";
+            this.selectedStationsListDiv.style.display = "none";
+          }
+        },
+
+        /** 解体モード関連UIの表示/非表示を切り替える。 */
+        setDemolitionModeActive: function (active) {
+          if (active) {
+            this.demolitionModeButton.classList.add("active");
+            this.confirmDemolitionButton.style.display = "block";
+            this.cancelDemolitionButton.style.display = "block";
+            this.selectedDemolitionTargetDisplay.style.display = "block";
+          } else {
+            this.demolitionModeButton.classList.remove("active");
+            this.confirmDemolitionButton.style.display = "none";
+            this.cancelDemolitionButton.style.display = "none";
+            this.selectedDemolitionTargetDisplay.style.display = "none";
+            this.selectedDemolitionTargetDisplay.textContent = ""; // 表示をクリア
+          }
+          this.confirmDemolitionButton.disabled = !state.selectedForDemolition;
+        },
+      };
+
+      // --- INITIALIZE UI ---
+      ui.updateFinance();
+      ui.renderTrainShop();
+      ui.setLineBuildModeActive(false); // 初期は非表示
+      ui.setDemolitionModeActive(false); // 初期は非表示
+      ui.costGround.textContent = CONFIG.costs.ground.perMeter;
+      ui.costViaduct.textContent = CONFIG.costs.viaduct.perMeter;
+      ui.costTunnel.textContent = CONFIG.costs.tunnel.perMeter;
+
+      // --- HELPER FUNCTIONS: 汎用ユーティリティ関数 ---
+
+      /** ユニークなIDを生成する。 */
+      function generateUniqueId() {
+        return "_" + Math.random().toString(36).substr(2, 9);
+      }
+
+      /** IDに基づいて駅オブジェクトを検索する。 */
+      function getStationById(id) {
+        var i;
+        for (i = 0; i < state.stations.length; i++) {
+          if (state.stations[i].id === id) {
+            return state.stations[i];
+          }
+        }
+        return undefined;
+      }
+
+      /** IDに基づいて路線オブジェクトを検索する。 */
+      function getLineById(id) {
+        var i;
+        for (i = 0; i < state.lines.length; i++) {
+          if (state.lines[i].id === id) {
+            return state.lines[i];
+          }
+        }
+        return undefined;
+      }
+
+      /** IDに基づいて線路オブジェクトを検索する。 */
+      function getTrackById(id) {
+        var i;
+        for (i = 0; i < state.tracks.length; i++) {
+          if (state.tracks[i].id === id) {
+            return state.tracks[i];
+          }
+        }
+        return undefined;
+      }
+
+      /**
+       * パス(LatLng配列)上の始点からの指定された距離にある点と、その点での進行方向を計算する。
+       * @param {L.LatLng[]} latlngs - パスを構成するLatLngの配列。
+       * @param {number} distance - パスの始点からの距離(メートル)。
+       * @returns {{latlng: L.LatLng, heading: number}|null} - 緯度経度と進行方向(度)。パスの範囲外の場合はnull。
+       */
+      function getPointAtDistance(latlngs, distance) {
+        if (!latlngs || latlngs.length < 2) {
+          return null;
+        }
+        var currentDist = 0;
+        for (var i = 0; i < latlngs.length - 1; i++) {
+          var p1 = latlngs[i];
+          var p2 = latlngs[i + 1];
+          var segmentDist = p1.distanceTo(p2);
+          if (currentDist + segmentDist >= distance) {
+            var distIntoSegment = distance - currentDist;
+            var ratio = segmentDist === 0 ? 0 : distIntoSegment / segmentDist;
+            var lat = p1.lat + (p2.lat - p1.lat) * ratio;
+            var lng = p1.lng + (p2.lng - p1.lng) * ratio;
+            return {
+              latlng: L.latLng(lat, lng),
+              heading: getHeading(p1, p2),
+            };
+          }
+          currentDist += segmentDist;
+        }
+        // 距離がパスの全長を超える場合は、最後の点を返す
+        var lastP1 = latlngs[latlngs.length - 2];
+        var lastP2 = latlngs[latlngs.length - 1];
+        return {
+          latlng: lastP2,
+          heading: getHeading(lastP1, lastP2),
+        };
+      }
+
+      /**
+       * LatLngの配列で構成されるパス上の指定された進行度におけるLatLngと進行方向を計算する。
+       * @param {L.LatLng[]} latlngs - パスを構成するLatLngの配列。
+       * @param {number} progress - 0.0から1.0までの進行度。
+       * @returns {{latlng: L.LatLng, heading: number}} - 緯度経度と進行方向（度）。
+       */
+      function getLatLngAtProgressOnPath(latlngs, progress) {
+        if (!latlngs || latlngs.length < 2) {
+          return { latlng: latlngs ? latlngs[0] : L.latLng(0, 0), heading: 0 };
+        }
+
+        var totalLength = 0;
+        var segmentLengths = [];
+        var i;
+        for (i = 0; i < latlngs.length - 1; i++) {
+          var segmentLength = latlngs[i].distanceTo(latlngs[i + 1]);
+          segmentLengths.push(segmentLength);
+          totalLength += segmentLength;
+        }
+
+        if (totalLength === 0) {
+          return { latlng: latlngs[0], heading: 0 };
+        }
+
+        var targetDistance = totalLength * progress;
+
+        // getPointAtDistance を再利用
+        return getPointAtDistance(latlngs, targetDistance);
+      }
+
+      /**
+       * 2点間の進行方向（角度）を計算する。
+       * @param {L.LatLng} p1 - 始点。
+       * @param {L.LatLng} p2 - 終点。
+       * @returns {number} - 進行方向（度、北を0度として時計回り）。
+       */
+      function getHeading(p1, p2) {
+        var toRad = Math.PI / 180;
+        var toDeg = 180 / Math.PI;
+
+        var lat1 = p1.lat * toRad;
+        var lon1 = p1.lng * toRad;
+        var lat2 = p2.lat * toRad;
+        var lon2 = p2.lng * toRad;
+
+        var dLon = lon2 - lon1;
+
+        var y = Math.sin(dLon) * Math.cos(lat2);
+        var x =
+          Math.cos(lat1) * Math.sin(lat2) -
+          Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLon);
+
+        var bearing = Math.atan2(y, x) * toDeg;
+        bearing = (bearing + 360) % 360; // 0-360度の範囲に変換
+        return bearing;
+      }
+
+      /**
+       * メートル単位の長さを現在の地図のズームレベルと緯度に基づいてピクセルに変換する。
+       * @param {number} meters - メートル単位の長さ。
+       * @param {L.LatLng} latlng - 変換を行う緯度経度。
+       * @returns {number} - ピクセル単位の長さ。
+       */
+      function metersToPixels(meters, latlng) {
+        var point1 = map.latLngToLayerPoint(latlng);
+        var metersPerDegreeLng =
+          111320 * Math.cos((latlng.lat * Math.PI) / 180);
+        var latlng2 = L.latLng(
+          latlng.lat,
+          latlng.lng + meters / metersPerDegreeLng
+        );
+        var point2 = map.latLngToLayerPoint(latlng2);
+        return point1.distanceTo(point2);
+      }
+
+      /**
+       * パス (LatLngの配列) の総距離をメートルで計算する。
+       * @param {L.LatLng[]} pathLatLngs - パスを構成するLatLngの配列。
+       * @returns {number} - パスの総距離 (メートル)。
+       */
+      function calculatePathDistance(pathLatLngs) {
+        var distance = 0;
+        var i;
+        for (i = 0; i < pathLatLngs.length - 1; i++) {
+          distance += pathLatLngs[i].distanceTo(pathLatLngs[i + 1]);
+        }
+        return distance;
+      }
+      /**
+
+ * 緯度経度に基づいて駅オブジェクトを検索する（中心座標で比較）。
+ * @param {L.LatLng} latlng - 検索する緯度経度。
+ * @returns {object|null} - 見つかった駅オブジェクト、またはnull。
+ */
+      function findStationByLatLng(latlng) {
+        for (var i = 0; i < state.stations.length; i++) {
+          // L.LatLng.equals() を使って座標を比較
+          if (state.stations[i].latlng.equals(latlng)) {
+            return state.stations[i];
+          }
+        }
+        return null;
+      }
+      /**
+       * 2つの駅間を接続する既存の線路パスを探索し、そのパスを構成するLatLngsを返す。
+       * グラフ探索（BFS）により、連続した線路・駅プラットフォームを繋ぐ。
+       * @param {L.LatLng} startStationLatLng - 始点駅の中心緯度経度。
+       * @param {L.LatLng} endStationLatLng - 終点駅の中心緯度経度。
+       * @returns {L.LatLng[]|null} - 見つかった線路パスのLatLng配列。見つからない場合はnullを返す。
+       */
+      function findPathBetweenStations_GraphSearch(
+        startStationLatLng,
+        endStationLatLng
+      ) {
+        var thresholdMeters = CONFIG.snapThresholdMeters;
+
+        var startStationObj = findStationByLatLng(startStationLatLng);
+        var endStationObj = findStationByLatLng(endStationLatLng);
+
+        // 駅が見つからない、または同じ駅同士の探索は無効
+        if (
+          !startStationObj ||
+          !endStationObj ||
+          startStationObj.id === endStationObj.id
+        ) {
+          return null;
+        }
+
+        // 1. 探索のためのグラフ構造（隣接リスト）を作成
+        var adj = {};
+        var nodes = {};
+
+        function addNode(id, latlng) {
+          if (!adj[id]) {
+            adj[id] = [];
+            nodes[id] = { latlng: latlng };
+          }
+        }
+        function addEdge(u, v, path) {
+          adj[u].push({ to: v, path: path });
+          adj[v].push({ to: u, path: [].concat(path).reverse() }); // 逆方向も追加
+        }
+
+        var i;
+        // 線路をグラフに追加
+        for (i = 0; i < state.tracks.length; i++) {
+          var track = state.tracks[i];
+          if (!track.latlngs || track.latlngs.length < 2) continue;
+          var trackStartId = "track_" + track.id + "_start";
+          var trackEndId = "track_" + track.id + "_end";
+          addNode(trackStartId, track.latlngs[0]);
+          addNode(trackEndId, track.latlngs[track.latlngs.length - 1]);
+          addEdge(trackStartId, trackEndId, track.latlngs);
+        }
+
+        // 駅のプラットフォームをグラフに追加
+        for (i = 0; i < state.stations.length; i++) {
+          var station = state.stations[i];
+          if (!station.latlngs || station.latlngs.length < 2) continue;
+          var stationStartId = "station_" + station.id + "_start";
+          var stationEndId = "station_" + station.id + "_end";
+          addNode(stationStartId, station.latlngs[0]);
+          addNode(stationEndId, station.latlngs[station.latlngs.length - 1]);
+          addEdge(stationStartId, stationEndId, station.latlngs);
+        }
+
+        // ノード間の接続（線路同士、駅と線路など）をエッジとして追加
+        var nodeIds = Object.keys(nodes);
+        for (i = 0; i < nodeIds.length; i++) {
+          for (var j = i + 1; j < nodeIds.length; j++) {
+            var id1 = nodeIds[i];
+            var id2 = nodeIds[j];
+            var parts1 = id1.split("_");
+            var parts2 = id2.split("_");
+
+            // 同じオブジェクト（線路 or 駅）の端点同士は接続しない
+            // IDは'type__randomid_endpoint'の形式なので、ID部分は2番目以降
+            if (
+              parts1[0] === parts2[0] &&
+              parts1.length > 2 &&
+              parts2.length > 2 &&
+              parts1[2] === parts2[2]
+            ) {
+              continue;
+            }
+
+            if (
+              nodes[id1].latlng.distanceTo(nodes[id2].latlng) < thresholdMeters
+            ) {
+              addEdge(id1, id2, [nodes[id1].latlng, nodes[id2].latlng]);
+            }
+          }
+        }
+
+        // 2. BFSで始点駅の端から終点駅の端への経路を探索
+        var startNodeIds = [
+          "station_" + startStationObj.id + "_start",
+          "station_" + startStationObj.id + "_end",
+        ];
+        var endNodeIds = [
+          "station_" + endStationObj.id + "_start",
+          "station_" + endStationObj.id + "_end",
+        ];
+
+        var queue = [];
+        var visited = {};
+
+        // 始点駅の両端をキューの初期値として追加
+        for (i = 0; i < startNodeIds.length; i++) {
+          var startId = startNodeIds[i];
+          if (nodes[startId]) {
+            queue.push({ id: startId, path: [nodes[startId].latlng] });
+            visited[startId] = true;
+          }
+        }
+
+        while (queue.length > 0) {
+          var current = queue.shift();
+
+          // 終点駅のどちらかの端に到達したら成功
+          if (endNodeIds.includes(current.id)) {
+            return current.path;
+          }
+
+          var neighbors = adj[current.id] || [];
+          for (i = 0; i < neighbors.length; i++) {
+            var neighbor = neighbors[i];
+            if (!visited[neighbor.to]) {
+              visited[neighbor.to] = true;
+
+              var newPath = [].concat(current.path);
+              var segmentPath = neighbor.path;
+
+              // 接続点で座標が重複しないようにパスを結合
+              if (
+                newPath.length > 0 &&
+                segmentPath.length > 0 &&
+                newPath[newPath.length - 1].equals(segmentPath[0])
+              ) {
+                Array.prototype.push.apply(newPath, segmentPath.slice(1));
+              } else {
+                Array.prototype.push.apply(newPath, segmentPath);
+              }
+
+              queue.push({ id: neighbor.to, path: newPath });
+            }
+          }
+        }
+
+        return null; // パスが見つからなかった場合
+      }
+
+      /**
+       * すべてのモードを非アクティブにするヘルパー関数
+       */
+      function deactivateAllModes() {
+        if (state.planning.type) {
+          if (state.planning.ghost) {
+            map.removeLayer(state.planning.ghost);
+            state.planning.ghost = null;
+          }
+          state.planning.points = [];
+          state.planning.type = null;
+          ui.resetBuildModeActive();
+        }
+        if (state.lineBuildingMode) {
+          cancelLineBuilding();
+        }
+        if (state.demolitionMode) {
+          cancelDemolition();
+        }
+        map.dragging.enable(); // マップドラッグを有効化
+      }
+
+      // --- EVENT LISTENERS: 各種UIイベントハンドラの設定 ---
+
+      // 建設ボタン
+      document.getElementById("build-ground").onclick = function () {
+        deactivateAllModes();
+        startPlanning("ground");
+      };
+      document.getElementById("build-viaduct").onclick = function () {
+        deactivateAllModes();
+        startPlanning("viaduct");
+      };
+      document.getElementById("build-tunnel").onclick = function () {
+        deactivateAllModes();
+        startPlanning("tunnel");
+      };
+      document.getElementById("build-station").onclick = function () {
+        deactivateAllModes();
+        startPlanning("station");
+      };
+      ui.confirmBuildButton.onclick = confirmBuild;
+
+      // 列車ショップボタン
+      ui.buyTrainButton.onclick = buySelectedTrain;
+      ui.assignTrainToLineButton.onclick = assignSelectedTrainToLine;
+      ui.lineSelectForAssignment.onchange = function () {
+        ui.assignTrainToLineButton.disabled =
+          !state.selectedTrainToAssignId || !ui.lineSelectForAssignment.value;
+      };
+
+      // 路線設定ボタン
+      ui.startLineBuildButton.onclick = function () {
+        deactivateAllModes();
+        startLineBuilding();
+      };
+      ui.confirmLineBuildButton.onclick = confirmLineBuilding;
+      ui.cancelLineBuildButton.onclick = cancelLineBuilding;
+
+      // 解体ボタン
+      ui.demolitionModeButton.onclick = function () {
+        deactivateAllModes();
+        startDemolitionMode();
+      };
+      ui.confirmDemolitionButton.onclick = confirmDemolition;
+      ui.cancelDemolitionButton.onclick = cancelDemolition;
+
+      // セーブ/ロードボタン
+      ui.saveGameButton.onclick = saveGame;
+      ui.loadGameButton.onclick = loadGame;
+
+      // --- PLANNING (TRACK/STATION CONSTRUCTION): 線路・駅建設モードのロジック ---
+      var dragging = false; // マップドラッグ中かどうかのフラグ
+
+      /**
+       * 建設モードを開始または終了する。
+       * @param {string} type - 建設タイプ ('ground', 'viaduct', 'tunnel', 'station')。
+       */
+      function startPlanning(type) {
+        if (state.planning.type === type) {
+          // 同じボタンを再度押したら解除
+          deactivateAllModes(); // 全モードを解除
+          ui.showMessage("建設モードを解除しました。");
+          return;
+        }
+
+        // 新しい建設モードを開始
+        deactivateAllModes();
+        state.planning.type = type;
+        state.planning.points = [];
+        if (state.planning.ghost) {
+          map.removeLayer(state.planning.ghost);
+        } // 既存のゴーストをクリア
+        state.planning.ghost = null;
+        map.dragging.disable(); // 建設中はマップドラッグを無効化
+        ui.showMessage(
+          (type === "station" ? "駅" : "線路") +
+            "建設モード: マップをドラッグして建設します。"
+        );
+        ui.setBuildModeActive(type);
+      }
+
+      // --- MAP EVENTS FOR CONSTRUCTION ---
+      map.on("mousedown", function (e) {
+        if (!state.planning.type) return; // 建設モードでない場合は何もしない
+
+        dragging = true;
+        var snappedPoint = snapPoint(e.latlng);
+        state.planning.points = [snappedPoint]; // 最初の点を設定
+
+        // ゴースト表示を更新
+        if (state.planning.ghost) {
+          map.removeLayer(state.planning.ghost);
+        }
+        if (state.planning.type === "station") {
+          state.planning.ghost = L.polyline(
+            [snappedPoint, snappedPoint],
+            ghostStyle("station")
+          ).addTo(map);
+        } else {
+          state.planning.ghost = L.polyline(
+            [snappedPoint, snappedPoint],
+            ghostStyle(state.planning.type)
+          ).addTo(map);
+        }
+      });
+
+      map.on("mousemove", function (e) {
+        if (
+          dragging &&
+          state.planning.type &&
+          state.planning.points.length > 0
+        ) {
+          var snappedPoint = snapPoint(e.latlng);
+          state.planning.ghost.setLatLngs([
+            state.planning.points[0],
+            snappedPoint,
+          ]);
+        }
+      });
+
+      map.on("mouseup", function (e) {
+        if (
+          dragging &&
+          state.planning.type &&
+          state.planning.points.length > 0
+        ) {
+          dragging = false;
+          var snappedPoint = snapPoint(e.latlng);
+
+          if (!state.planning.points[0].equals(snappedPoint)) {
+            state.planning.points.push(snappedPoint);
+          } else {
+            if (state.planning.type === "station") {
+              // 1点しかクリックされなかった場合、デフォルトのプラットフォーム長を生成
+              var defaultLength = 20; // メートル
+              var angle = 45; // 北東
+              var latOffset = defaultLength / 111111;
+              var lngOffset =
+                defaultLength /
+                (111111 * Math.cos((snappedPoint.lat * Math.PI) / 180));
+              state.planning.points.push(
+                L.latLng(
+                  snappedPoint.lat +
+                    latOffset * Math.cos((angle * Math.PI) / 180),
+                  snappedPoint.lng +
+                    lngOffset * Math.sin((angle * Math.PI) / 180)
+                )
+              );
+            } else {
+              ui.showMessage(
+                "線路は2つの異なる点で構成する必要があります。",
+                false,
+                3000
+              );
+              if (state.planning.ghost) {
+                map.removeLayer(state.planning.ghost);
+                state.planning.ghost = null;
+              }
+              state.planning.points = [];
+              ui.confirmBuildButton.disabled = true;
+              ui.confirmBuildButton.textContent = "建設確定";
+              return;
+            }
+          }
+
+          var cost = 0;
+          var len = state.planning.points[0].distanceTo(
+            state.planning.points[1]
+          );
+          if (state.planning.type === "station") {
+            cost =
+              CONFIG.costs.station.base + CONFIG.costs.station.perMeter * len;
+          } else {
+            cost = CONFIG.costs[state.planning.type].perMeter * len;
+          }
+          ui.confirmBuildButton.textContent =
+            "建設確定 ($" + Math.round(cost).toLocaleString() + ")";
+          ui.confirmBuildButton.disabled = state.assets < cost;
+        }
+      });
+
+      // --- SNAP TO NEARBY TRACK/STATION ---
+      /**
+       * 最も近い既存の線路の端点や駅に緯度経度をスナップさせる。
+       * @param {L.LatLng} latlng - スナップ対象の緯度経度。
+       * @returns {L.LatLng} - スナップされた緯度経度、または元の緯度経度。
+       */
+      function snapPoint(latlng) {
+        var closest = { point: latlng, dist: Infinity };
+        var currentPointPx = map.latLngToLayerPoint(latlng);
+        var i;
+        var snapCandidates = [];
+
+        // 既存の線路の端点
+        for (i = 0; i < state.tracks.length; i++) {
+          snapCandidates.push(state.tracks[i].latlngs[0]);
+          snapCandidates.push(
+            state.tracks[i].latlngs[state.tracks[i].latlngs.length - 1]
+          );
+        }
+
+        // 既存の駅のプラットフォームの端点をスナップ候補に追加
+        for (i = 0; i < state.stations.length; i++) {
+          // snapCandidates.push(state.stations[i].latlng); // 中心点ではなく端点を候補にする
+          if (
+            state.stations[i].latlngs &&
+            state.stations[i].latlngs.length >= 2
+          ) {
+            snapCandidates.push(state.stations[i].latlngs[0]);
+            snapCandidates.push(
+              state.stations[i].latlngs[state.stations[i].latlngs.length - 1]
+            );
+          }
+        }
+
+        for (i = 0; i < snapCandidates.length; i++) {
+          var p = snapCandidates[i];
+          var d = currentPointPx.distanceTo(map.latLngToLayerPoint(p));
+          if (d < closest.dist && d < CONFIG.snapThresholdPixels) {
+            closest = { point: p, dist: d };
+          }
+        }
+
+        return closest.point;
+      }
+      // --- GHOST STYLE ---
+      /**
+       * 建設モードの仮表示（ゴースト）のスタイルを返す。
+       * @param {string} type - 建設タイプ。
+       * @returns {object} - Leafletのポリラインスタイルオブジェクト。
+       */
+      function ghostStyle(type) {
+        var styles = {
+          ground: { color: "#007bff", weight: 4, dashArray: "10,10" },
+          viaduct: { color: "#0a0", weight: 4, dashArray: "5,5" },
+          tunnel: { color: "#a0a", weight: 4, dashArray: "2,8" },
+          station: {
+            color: "#d9534f",
+            weight: 6,
+            opacity: 0.7,
+            dashArray: "5, 10",
+          },
+          lineGhost: { color: "#888", weight: 5, dashArray: "5,10" }, // 路線設定中の仮線
+        };
+        return styles[type] || { color: "#000", weight: 4 };
+      }
+
+      // --- CONFIRM BUILD (TRACK/STATION): 建設の確定ロジック ---
+      function confirmBuild() {
+        if (!state.planning.type) {
+          ui.showMessage("建設モードが選択されていません。");
+          return;
+        }
+        if (state.planning.points.length < 2) {
+          ui.showMessage("建設点が不足しています。", false, 3000);
+          return;
+        }
+
+        var type = state.planning.type;
+        var actualCost;
+        var buildMessage;
+        var points = state.planning.points;
+        var len = points[0].distanceTo(points[1]);
+
+        if (type === "station") {
+          actualCost =
+            CONFIG.costs.station.base + CONFIG.costs.station.perMeter * len;
+          buildMessage = "プラットフォーム長 " + len.toFixed(1) + "m の駅";
+        } else {
+          actualCost = CONFIG.costs[type].perMeter * len;
+          buildMessage =
+            (type === "ground"
+              ? "地上線"
+              : type === "viaduct"
+              ? "高架線"
+              : "トンネル") +
+            " (" +
+            len.toFixed(1) +
+            "m)";
+        }
+
+        if (state.assets < actualCost) {
+          ui.showMessage("資金不足: 建設できません。", false, 5000);
+          return;
+        }
+
+        state.assets -= actualCost;
+
+        if (type === "station") {
+          var stationId = generateUniqueId();
+          var stationName = "無名駅" + (state.stations.length + 1);
+          var stationCenter = points[0];
+
+          var platformLayer = L.polyline(points, {
+            className: "station-platform",
+            color: "#d9534f",
+            weight: 6,
+            opacity: 0.9,
+            id: stationId,
+          }).addTo(map);
+          var marker = L.marker(stationCenter, {
+            icon: L.divIcon({
+              className: "station-marker",
+              iconSize: [16, 16],
+            }),
+            id: stationId,
+          }).addTo(map);
+
+          var newStation = {
+            id: stationId,
+            name: stationName,
+            latlng: stationCenter,
+            latlngs: points,
+            platformLength: len,
+            layer: platformLayer,
+            marker: marker,
+            revenueMultiplier: 1.0, // 初期値は1.0、後で人口密度で更新
+          };
+          state.stations.push(newStation);
+
+          marker.on("click", function (e) {
+            e.originalEvent.stopPropagation();
+            var currentId = e.target.options.id;
+            if (state.lineBuildingMode) {
+              handleStationClickForLineBuilding(currentId);
+            } else if (state.demolitionMode) {
+              selectForDemolition("station", currentId);
+            }
+          });
+          platformLayer.on("click", function (e) {
+            e.originalEvent.stopPropagation();
+            var currentId = e.target.options.id;
+            if (state.demolitionMode) {
+              selectForDemolition("station", currentId);
+            }
+          });
+
+          // ポップアップは地名APIと人口密度データが揃ってから更新
+          // 初期ポップアップを設定。人口密度取得後に更新される。
+          marker.bindPopup(
+            "<b>" +
+              newStation.name +
+              "</b><br>ID: " +
+              newStation.id +
+              "<br>プラットフォーム長: " +
+              len.toFixed(1) +
+              "m<br>収益倍率: " +
+              newStation.revenueMultiplier.toFixed(2)
+          );
+
+          fetch(
+            "https://nominatim.openstreetmap.org/reverse?format=json&lat=" +
+              stationCenter.lat +
+              "&lon=" +
+              stationCenter.lng +
+              "&zoom=18&addressdetails=1"
+          )
+            .then(function (response) {
+              return response.json();
+            })
+            .then(function (data) {
+              var resolvedName =
+                "無名駅 (" + stationCenter.lat.toFixed(4) + ")";
+              // var revenueMultiplier = 1.0; // 既存の地名APIからの収益倍率ロジックは削除
+
+              if (data && data.address) {
+                var addr = data.address;
+                // 地名APIからの収益倍率設定ロジックは削除
+                var nameCandidate =
+                  addr.station ||
+                  addr.railway ||
+                  addr.town ||
+                  addr.village ||
+                  addr.suburb ||
+                  addr.neighbourhood ||
+                  addr.city;
+                if (nameCandidate) {
+                  resolvedName = nameCandidate.match(/(区|市|町|村|郡)$/)
+                    ? nameCandidate
+                    : nameCandidate + "駅";
+                }
+              }
+
+              newStation.name = resolvedName;
+              // newStation.revenueMultiplier = revenueMultiplier; // 既存の地名APIからの収益倍率設定ロジックは削除
+
+              // 人口密度に基づいて収益倍率を設定
+              setStationRevenueMultiplier(newStation);
+
+              ui.showMessage(
+                resolvedName +
+                  "を建設しました！ (" +
+                  buildMessage +
+                  ", $" +
+                  Math.round(actualCost).toLocaleString() +
+                  ")",
+                false,
+                2500
+              );
+              ui.renderTrainShop();
+            })
+            .catch(function (error) {
+              console.error("地名APIの取得に失敗しました:", error);
+              // 地名APIが失敗しても人口密度は設定する
+              newStation.name = "無名駅 (" + stationCenter.lat.toFixed(4) + ")";
+              setStationRevenueMultiplier(newStation);
+              ui.showMessage(
+                "地名取得失敗: " +
+                  newStation.name +
+                  "を建設しました。 (" +
+                  buildMessage +
+                  ", $" +
+                  Math.round(actualCost).toLocaleString() +
+                  ")",
+                false,
+                2500
+              );
+            });
+        } else {
+          // 線路建設
+          var trackId = generateUniqueId();
+          var trackLayer = L.polyline(points, {
+            className: "track-line track-" + type,
+            weight: 4,
+            opacity: 0.9,
+            id: trackId,
+          }).addTo(map);
+          // CSSクラスでの色付けに合わせるため、styleを直接指定しない
+          state.tracks.push({
+            id: trackId,
+            latlngs: points,
+            layer: trackLayer,
+            type: type,
+          });
+
+          trackLayer.on("click", function (e) {
+            e.originalEvent.stopPropagation();
+            if (state.demolitionMode) {
+              selectForDemolition("track", this.options.id);
+            }
+          });
+
+          ui.showMessage(
+            buildMessage +
+              "を建設しました！ ($" +
+              Math.round(actualCost).toLocaleString() +
+              ")",
+            false,
+            2000
+          );
+        }
+
+        if (state.planning.ghost) {
+          map.removeLayer(state.planning.ghost);
+          state.planning.ghost = null;
+        }
+        state.planning.points = [];
+        state.planning.type = null;
+        map.dragging.enable();
+        ui.resetBuildModeActive();
+        ui.updateFinance();
+      }
+
+      // --- TRAIN SHOP LOGIC: 列車ショップの機能 ---
+
+      /** 購入する列車を選択する。 */
+      function selectTrainToBuy(trainId) {
+        state.selectedTrainToBuyId = trainId;
+        ui.renderTrainShop();
+      }
+
+      /** 選択された列車を購入する。 */
+      function buySelectedTrain() {
+        var trainToBuyConfig = CONFIG.trains.find(function (t) {
+          return t.id === state.selectedTrainToBuyId;
+        });
+        if (!trainToBuyConfig) {
+          ui.showMessage("列車が選択されていません。");
+          return;
+        }
+        if (state.assets < trainToBuyConfig.cost) {
+          ui.showMessage("資金不足: 列車を購入できません。", false, 5000);
+          return;
+        }
+
+        state.assets -= trainToBuyConfig.cost;
+        var newTrain = {
+          id: generateUniqueId(),
+          type: trainToBuyConfig.id,
+          name: trainToBuyConfig.name,
+          cars: trainToBuyConfig.cars,
+          cost: trainToBuyConfig.cost,
+          color: trainToBuyConfig.color,
+          speed: trainToBuyConfig.defaultSpeed,
+          totalLength:
+            trainToBuyConfig.cars * CONFIG.trainCarDimensionsMeters.length,
+          currentStationId: null,
+          currentLineId: null,
+          currentSegmentIndex: 0,
+          direction: 1,
+          progress: 0,
+          isStopped: false,
+          stopTimer: null,
+          carLayers: [],
+          currentLatLng: null,
+          currentHeading: 0,
+        };
+        state.trains.push(newTrain);
+
+        ui.updateFinance();
+        ui.showMessage(trainToBuyConfig.name + "を購入しました！", false, 2000);
+        state.selectedTrainToBuyId = null;
+        ui.renderTrainShop();
+      }
+
+      /** 路線に割り当てる列車を選択する。 */
+      function selectTrainToAssign(trainId) {
+        state.selectedTrainToAssignId = trainId;
+        ui.renderTrainShop();
+      }
+
+      /** 選択された列車を路線に割り当てる。 */
+      function assignSelectedTrainToLine() {
+        var trainId = state.selectedTrainToAssignId;
+        var lineId = ui.lineSelectForAssignment.value;
+
+        if (!trainId || !lineId) {
+          ui.showMessage("列車と路線を選択してください。");
+          return;
+        }
+
+        var train = state.trains.find(function (t) {
+          return t.id === trainId;
+        });
+        var line = getLineById(lineId);
+
+        if (!train || !line) {
+          ui.showMessage("無効な列車または路線です。");
+          return;
+        }
+        if (line.segments.length === 0) {
+          ui.showMessage("選択された路線には有効なセグメントがありません。");
+          return;
+        }
+
+        if (train.currentLineId) {
+          var oldLine = getLineById(train.currentLineId);
+          if (oldLine && oldLine.assignedTrainIds) {
+            oldLine.assignedTrainIds = oldLine.assignedTrainIds.filter(
+              function (id) {
+                return id !== train.id;
+              }
+            );
+          }
+        }
+
+        train.currentLineId = line.id;
+        train.currentSegmentIndex = 0;
+        train.direction = 1;
+        train.progress = 0;
+        train.isStopped = false;
+        train.stopTimer = null;
+        train.currentStationId = null;
+
+        var firstSegment = line.segments[0];
+        if (firstSegment && firstSegment.latlngs.length > 0) {
+          train.currentLatLng = firstSegment.latlngs[0];
+          train.currentHeading = getHeading(
+            firstSegment.latlngs[0],
+            firstSegment.latlngs[1] || firstSegment.latlngs[0]
+          );
+        } else {
+          console.warn("路線の最初のセグメントが見つかりません。");
+          train.currentLineId = null;
+          return;
+        }
+
+        if (!line.assignedTrainIds) {
+          line.assignedTrainIds = [];
+        }
+        line.assignedTrainIds.push(train.id);
+
+        ui.showMessage(
+          train.name + "を路線 " + line.name + "に割り当てました。",
+          false,
+          2000
+        );
+        state.selectedTrainToAssignId = null;
+        ui.renderTrainShop();
+        renderTrains();
+      }
+
+      // --- LINE BUILDING LOGIC: 路線設定の機能 ---
+
+      /** 路線設定モードを開始する。 */
+      function startLineBuilding() {
+        if (state.lineBuildingMode) {
+          cancelLineBuilding();
+          return;
+        }
+
+        deactivateAllModes();
+        state.lineBuildingMode = true;
+        state.selectedStationsForLine = [];
+        if (state.currentLineGhost) {
+          map.removeLayer(state.currentLineGhost);
+          state.currentLineGhost = null;
+        }
+        ui.showMessage(
+          "路線設定モードを開始しました。駅をクリックして路線に追加してください。",
+          true
+        );
+        ui.setLineBuildModeActive(true);
+        map.dragging.disable();
+
+        var i;
+        for (i = 0; i < state.stations.length; i++) {
+          var station = state.stations[i];
+          if (station.marker && station.marker._icon) {
+            station.marker._icon.classList.add("station-marker-selectable");
+          }
+        }
+        ui.updateSelectedStationsForLine();
+      }
+
+      /**
+       * 路線設定モード中に駅がクリックされたときのハンドラ。
+       * @param {string} stationId - クリックされた駅のID。
+       */
+      function handleStationClickForLineBuilding(stationId) {
+        if (!state.lineBuildingMode) return;
+
+        var station = getStationById(stationId);
+        if (!station) return;
+
+        var index = state.selectedStationsForLine.indexOf(stationId);
+        if (index > -1) {
+          removeStationFromLineBuilding(stationId);
+          ui.showMessage(
+            station.name + "を路線から削除しました。",
+            false,
+            1500
+          );
+        } else {
+          state.selectedStationsForLine.push(stationId);
+          ui.showMessage(station.name + "を路線に追加しました。", false, 1500);
+          if (station.marker && station.marker._icon) {
+            station.marker._icon.classList.add("selected-for-line");
+          }
+        }
+
+        ui.updateSelectedStationsForLine();
+        updateLineGhost();
+      }
+
+      /**
+       * 路線設定モードから駅を削除する。
+       * @param {string} stationIdToRemove - 削除する駅のID。
+       */
+      function removeStationFromLineBuilding(stationIdToRemove) {
+        var index = state.selectedStationsForLine.indexOf(stationIdToRemove);
+        if (index > -1) {
+          state.selectedStationsForLine.splice(index, 1);
+        }
+
+        var station = getStationById(stationIdToRemove);
+        if (station && station.marker && station.marker._icon) {
+          station.marker._icon.classList.remove("selected-for-line");
+        }
+        ui.updateSelectedStationsForLine();
+        updateLineGhost();
+      }
+
+      /** 路線設定中の仮ポリライン（ゴースト）を更新する。 */
+      function updateLineGhost() {
+        if (state.currentLineGhost) {
+          map.removeLayer(state.currentLineGhost);
+          state.currentLineGhost = null;
+        }
+        if (state.selectedStationsForLine.length < 2) {
+          return;
+        }
+
+        var ghostPath = [];
+        var pathFound = true;
+        for (var i = 0; i < state.selectedStationsForLine.length - 1; i++) {
+          var startStation = getStationById(state.selectedStationsForLine[i]);
+          var endStation = getStationById(state.selectedStationsForLine[i + 1]);
+          if (startStation && endStation) {
+            var segmentPath = findPathBetweenStations_GraphSearch(
+              startStation.latlng,
+              endStation.latlng
+            );
+
+            if (segmentPath) {
+              if (
+                ghostPath.length > 0 &&
+                segmentPath.length > 0 &&
+                ghostPath[ghostPath.length - 1].equals(segmentPath[0])
+              ) {
+                Array.prototype.push.apply(ghostPath, segmentPath.slice(1));
+              } else {
+                Array.prototype.push.apply(ghostPath, segmentPath);
+              }
+            } else {
+              pathFound = false;
+              ui.showMessage(
+                "警告: " +
+                  startStation.name +
+                  " と " +
+                  endStation.name +
+                  " 間に接続された線路がありません。",
+                false,
+                4000
+              );
+              break;
+            }
+          }
+        }
+
+        if (pathFound && ghostPath.length >= 2) {
+          state.currentLineGhost = L.polyline(
+            ghostPath,
+            ghostStyle("lineGhost")
+          ).addTo(map);
+        }
+      }
+
+      /** 路線設定を確定する。 */
+      function confirmLineBuilding() {
+        if (state.selectedStationsForLine.length < 2) {
+          ui.showMessage("路線には2つ以上の駅が必要です。");
+          return;
+        }
+
+        var totalLineDistance = 0;
+        var lineSegmentsForTrainMovement = [];
+        var linePathLatLngsForDisplay = [];
+        var pathFoundSuccessfully = true;
+
+        for (var i = 0; i < state.selectedStationsForLine.length - 1; i++) {
+          var startStation = getStationById(state.selectedStationsForLine[i]);
+          var endStation = getStationById(state.selectedStationsForLine[i + 1]);
+
+          if (startStation && endStation) {
+            var segmentPath = findPathBetweenStations_GraphSearch(
+              startStation.latlng,
+              endStation.latlng
+            );
+
+            if (segmentPath) {
+              var distance = calculatePathDistance(segmentPath);
+              totalLineDistance += distance;
+              lineSegmentsForTrainMovement.push({
+                startStationId: startStation.id,
+                endStationId: endStation.id,
+                latlngs: segmentPath,
+                distance: distance,
+              });
+              if (linePathLatLngsForDisplay.length > 0) {
+                Array.prototype.push.apply(
+                  linePathLatLngsForDisplay,
+                  segmentPath.slice(1)
+                );
+              } else {
+                Array.prototype.push.apply(
+                  linePathLatLngsForDisplay,
+                  segmentPath
+                );
+              }
+            } else {
+              pathFoundSuccessfully = false;
+              ui.showMessage(
+                "エラー: " +
+                  startStation.name +
+                  "から" +
+                  endStation.name +
+                  "への経路が見つかりませんでした。路線を作成できません。",
+                false,
+                5000
+              );
+              break;
+            }
+          }
+        }
+
+        if (!pathFoundSuccessfully) {
+          return;
+        }
+
+        var actualLineCost =
+          CONFIG.costs.line.base +
+          CONFIG.costs.line.perMeter * totalLineDistance;
+        if (state.assets < actualLineCost) {
+          ui.showMessage("資金不足: 路線を確定できません。", false, 5000);
+          return;
+        }
+
+        state.assets -= actualLineCost;
+
+        var lineId = generateUniqueId();
+        var lineColor = CONFIG.lineColors[state.currentLineColorIndex];
+        state.currentLineColorIndex =
+          (state.currentLineColorIndex + 1) % CONFIG.lineColors.length;
+
+        var lineLayer = L.polyline(linePathLatLngsForDisplay, {
+          className: "line-color",
+          color: lineColor,
+          weight: 5,
+          opacity: 0.8,
+          id: lineId,
+        }).addTo(map);
+
+        state.lines.push({
+          id: lineId,
+          name: "路線 " + (state.lines.length + 1),
+          stationIds: [].concat(state.selectedStationsForLine),
+          color: lineColor,
+          layer: lineLayer,
+          segments: lineSegmentsForTrainMovement,
+          totalDistance: totalLineDistance,
+          assignedTrainIds: [],
+        });
+
+        ui.updateFinance();
+        ui.showMessage(
+          "路線を確定しました！ (総距離 " +
+            totalLineDistance.toFixed(1) +
+            "m, コスト $" +
+            Math.round(actualLineCost).toLocaleString() +
+            ")",
+          false,
+          2000
+        );
+        cancelLineBuilding();
+        ui.renderTrainShop();
+      }
+
+      /** 路線設定をキャンセルする。 */
+      function cancelLineBuilding() {
+        state.lineBuildingMode = false;
+        var i;
+        for (i = 0; i < state.selectedStationsForLine.length; i++) {
+          var station = getStationById(state.selectedStationsForLine[i]);
+          if (station && station.marker && station.marker._icon) {
+            station.marker._icon.classList.remove("selected-for-line");
+          }
+        }
+        state.selectedStationsForLine = [];
+        if (state.currentLineGhost) {
+          map.removeLayer(state.currentLineGhost);
+          state.currentLineGhost = null;
+        }
+        ui.showMessage("路線設定をキャンセルしました。");
+        ui.setLineBuildModeActive(false);
+        ui.updateSelectedStationsForLine();
+        map.dragging.enable();
+
+        for (i = 0; i < state.stations.length; i++) {
+          var station = state.stations[i];
+          if (station.marker && station.marker._icon) {
+            station.marker._icon.classList.remove("station-marker-selectable");
+          }
+        }
+      }
+
+      // --- DEMOLITION LOGIC: 解体機能 ---
+      /** 解体モードを開始する。 */
+      function startDemolitionMode() {
+        if (state.demolitionMode) {
+          cancelDemolition();
+          return;
+        }
+        deactivateAllModes();
+        state.demolitionMode = true;
+        state.selectedForDemolition = null;
+        ui.showMessage(
+          "解体モード: 解体したい線路や駅をクリックしてください。",
+          true
+        );
+        ui.setDemolitionModeActive(true);
+        map.dragging.disable();
+      }
+
+      /**
+       * 解体モード中にマップ上のオブジェクトがクリックされたときのハンドラ。
+       * @param {string} type - 'track' または 'station'。
+       * @param {string} id - オブジェクトのID。
+       */
+      function selectForDemolition(type, id) {
+        if (!state.demolitionMode) return;
+
+        var demolitionTargetDisplayMap = {
+          track: function (id) {
+            return "選択中: 線路 (ID: " + id.substring(0, 5) + "...)";
+          },
+          station: function (id) {
+            var station = getStationById(id);
+            return "選択中: 駅 (" + (station ? station.name : "不明") + ")";
+          },
+        };
+
+        // ハイライト解除
+        if (state.selectedForDemolition) {
+          var prevType = state.selectedForDemolition.type;
+          var prevId = state.selectedForDemolition.id;
+          var prevObj =
+            prevType === "track"
+              ? getTrackById(prevId)
+              : getStationById(prevId);
+          if (prevObj) {
+            if (prevObj.layer && prevObj.layer._path)
+              prevObj.layer._path.classList.remove("selected-for-demolition");
+            if (prevObj.marker && prevObj.marker._icon)
+              prevObj.marker._icon.classList.remove("selected-for-demolition");
+          }
+        }
+
+        // 新しいオブジェクトを選択し、ハイライト
+        state.selectedForDemolition = { type: type, id: id };
+        var currentObj =
+          type === "track" ? getTrackById(id) : getStationById(id);
+        if (currentObj) {
+          if (currentObj.layer && currentObj.layer._path)
+            currentObj.layer._path.classList.add("selected-for-demolition");
+          if (currentObj.marker && currentObj.marker._icon)
+            currentObj.marker._icon.classList.add("selected-for-demolition");
+          ui.selectedDemolitionTargetDisplay.textContent =
+            demolitionTargetDisplayMap[type](id);
+        }
+        ui.confirmDemolitionButton.disabled = false;
+      }
+
+      /** 選択されたオブジェクトを解体する。 */
+      function confirmDemolition() {
+        if (!state.selectedForDemolition) {
+          ui.showMessage("解体するオブジェクトが選択されていません。");
+          return;
+        }
+
+        var type = state.selectedForDemolition.type;
+        var id = state.selectedForDemolition.id;
+        var i;
+
+        if (type === "track") {
+          var trackIndex = state.tracks.findIndex(function (t) {
+            return t.id === id;
+          });
+          if (trackIndex === -1) {
+            return;
+          }
+
+          map.removeLayer(state.tracks[trackIndex].layer);
+          state.tracks.splice(trackIndex, 1);
+          ui.showMessage("線路を解体しました。", false, 2000);
+
+          // この線路を使用していた可能性のある全ての路線を再検証・削除
+          var affectedLines = state.lines.filter(function (line) {
+            return !line.segments.every(function (seg) {
+              var start = getStationById(seg.startStationId);
+              var end = getStationById(seg.endStationId);
+              return (
+                start &&
+                end &&
+                findPathBetweenStations_GraphSearch(
+                  start.latlng,
+                  end.latlng
+                ) !== null
+              );
+            });
+          });
+          for (i = 0; i < affectedLines.length; i++) {
+            removeLine(affectedLines[i].id);
+          }
+        } else if (type === "station") {
+          var stationIndex = state.stations.findIndex(function (s) {
+            return s.id === id;
+          });
+          if (stationIndex === -1) {
+            return;
+          }
+          var stationToDemolish = state.stations[stationIndex];
+
+          map.removeLayer(stationToDemolish.layer);
+          map.removeLayer(stationToDemolish.marker);
+          state.stations.splice(stationIndex, 1);
+          ui.showMessage(
+            stationToDemolish.name + "を解体しました。",
+            false,
+            2000
+          );
+
+          // この駅を含む路線を全て削除
+          var linesToRemove = state.lines.filter(function (line) {
+            return line.stationIds.includes(id);
+          });
+          for (i = 0; i < linesToRemove.length; i++) {
+            removeLine(linesToRemove[i].id);
+          }
+        }
+
+        cancelDemolition();
+        ui.renderTrainShop();
+      }
+
+      /** 路線を削除するヘルパー関数 */
+      function removeLine(lineId) {
+        var lineIndex = state.lines.findIndex(function (l) {
+          return l.id === lineId;
+        });
+        if (lineIndex === -1) return;
+
+        var lineToRemove = state.lines[lineIndex];
+
+        var i, j;
+        if (lineToRemove.assignedTrainIds) {
+          for (i = 0; i < lineToRemove.assignedTrainIds.length; i++) {
+            var train = state.trains.find(function (t) {
+              return t.id === lineToRemove.assignedTrainIds[i];
+            });
+            if (train) {
+              train.currentLineId = null;
+              if (train.carLayers) {
+                for (j = 0; j < train.carLayers.length; j++) {
+                  map.removeLayer(train.carLayers[j]);
+                }
+                train.carLayers = [];
+              }
+              train.currentLatLng = null;
+              train.isStopped = true;
+              if (train.stopTimer) clearTimeout(train.stopTimer);
+            }
+          }
+        }
+
+        map.removeLayer(lineToRemove.layer);
+        state.lines.splice(lineIndex, 1);
+        ui.showMessage(
+          "路線 " + lineToRemove.name + " が削除されました。",
+          false,
+          3000
+        );
+      }
+
+      /** 解体モードをキャンセルする。 */
+      function cancelDemolition() {
+        if (state.selectedForDemolition) {
+          var type = state.selectedForDemolition.type;
+          var id = state.selectedForDemolition.id;
+          var obj = type === "track" ? getTrackById(id) : getStationById(id);
+          if (obj) {
+            if (obj.layer && obj.layer._path)
+              obj.layer._path.classList.remove("selected-for-demolition");
+            if (obj.marker && obj.marker._icon)
+              obj.marker._icon.classList.remove("selected-for-demolition");
+          }
+        }
+        state.demolitionMode = false;
+        state.selectedForDemolition = null;
+        ui.showMessage("解体モードをキャンセルしました。");
+        ui.setDemolitionModeActive(false);
+        map.dragging.enable();
+      }
+
+      // --- TRAIN MOVEMENT LOGIC: 列車移動の計算と更新 ---
+      /** 全列車の位置と状態を更新する。 */
+      function updateTrains() {
+        var deltaTime = CONFIG.updateInterval / 50;
+        var i;
+
+        for (i = 0; i < state.trains.length; i++) {
+          var train = state.trains[i];
+
+          if (!train.currentLineId || train.isStopped) {
+            continue;
+          }
+
+          var line = getLineById(train.currentLineId);
+          if (!line || !line.segments || line.segments.length === 0) {
+            console.warn(
+              "Train " + train.id + ": Invalid line. Stopping train."
+            );
+            train.currentLineId = null;
+            train.isStopped = true;
+            continue;
+          }
+
+          var currentSegment = line.segments[train.currentSegmentIndex];
+          if (
+            !currentSegment ||
+            !currentSegment.latlngs ||
+            currentSegment.latlngs.length < 2
+          ) {
+            console.warn(
+              "Train " + train.id + ": Invalid segment. Stopping train."
+            );
+            train.currentLineId = null;
+            train.isStopped = true;
+            continue;
+          }
+
+          var speed_mps = (train.speed * 1000) / 3600;
+          var distanceMoved = speed_mps * deltaTime;
+          var segmentLength = currentSegment.distance;
+          if (segmentLength === 0) {
+            continue;
+          }
+
+          var progressChange = distanceMoved / segmentLength;
+          train.progress += train.direction * progressChange;
+
+          // 進行方向に応じて終点・始点チェック
+          if (train.direction === 1 && train.progress >= 1.0) {
+            // 順方向で終点到着
+            var arrivedStationId =
+              line.stationIds[train.currentSegmentIndex + 1];
+            handleArrival(train, line, arrivedStationId, 1.0);
+          } else if (train.direction === -1 && train.progress <= 0) {
+            // 逆方向で始点到着
+            var arrivedStationId = line.stationIds[train.currentSegmentIndex];
+            handleArrival(train, line, arrivedStationId, 0);
+          } else {
+            // セグメント内を移動中
+            var data = getLatLngAtProgressOnPath(
+              currentSegment.latlngs,
+              train.progress
+            );
+            if (data) {
+              train.currentLatLng = data.latlng;
+              train.currentHeading = data.heading;
+              if (train.direction === -1) {
+                train.currentHeading = (train.currentHeading + 180) % 360;
+              }
+            }
+          }
+        }
+
+        renderTrains();
+      }
+
+      /**
+       * 駅到着時の処理をまとめたヘルパー関数
+       */
+      function handleArrival(train, line, arrivedStationId, progressAtArrival) {
+        train.progress = progressAtArrival;
+        var arrivedStation = getStationById(arrivedStationId);
+
+        function moveToNextSegment() {
+          if (train.direction === 1) {
+            // 順方向
+            if (train.currentSegmentIndex >= line.segments.length - 1) {
+              // 路線の終点
+              train.direction = -1; // 方向転換
+            } else {
+              train.currentSegmentIndex++;
+              train.progress = 0;
+            }
+          } else {
+            // 逆方向
+            if (train.currentSegmentIndex <= 0) {
+              // 路線の始点
+              train.direction = 1; // 方向転換
+            } else {
+              train.currentSegmentIndex--;
+              train.progress = 1.0;
+            }
+          }
+        }
+
+        if (
+          arrivedStation &&
+          arrivedStation.platformLength >= train.totalLength
+        ) {
+          train.isStopped = true;
+          train.currentStationId = arrivedStationId;
+          train.currentLatLng = arrivedStation.latlng;
+
+          var revenue =
+            CONFIG.revenuePerStationStop * arrivedStation.revenueMultiplier;
+          state.assets += revenue;
+          ui.updateFinance();
+          ui.showMessage(
+            arrivedStation.name +
+              "に到着！$" +
+              Math.round(revenue).toLocaleString() +
+              "の収益。",
+            false,
+            2500
+          );
+
+          train.stopTimer = setTimeout(function () {
+            train.isStopped = false;
+            train.currentStationId = null;
+            moveToNextSegment();
+          }, CONFIG.trainStopDuration);
+        } else {
+          if (arrivedStation) {
+            ui.showMessage(
+              train.name +
+                "は" +
+                arrivedStation.name +
+                "を通過します(プラットフォーム長不足)。",
+              false,
+              3000
+            );
+          }
+          moveToNextSegment();
+        }
+      }
+
+      // --- RENDER TRAINS: マップ上での列車の描画とアニメーション ---
+      /** 全列車の車両をマップ上に描画または更新する。 */
+      function renderTrains() {
+        var i, j;
+        for (i = 0; i < state.trains.length; i++) {
+          var train = state.trains[i];
+
+          if (train.carLayers) {
+            for (j = 0; j < train.carLayers.length; j++) {
+              map.removeLayer(train.carLayers[j]);
+            }
+          }
+          train.carLayers = [];
+
+          if (!train.currentLineId || !train.currentLatLng) continue;
+
+          var line = getLineById(train.currentLineId);
+          if (!line) continue;
+
+          var carLengthMeters = CONFIG.trainCarDimensionsMeters.length;
+          var currentSegment = line.segments[train.currentSegmentIndex];
+          var headDistanceInSegment = currentSegment.distance * train.progress;
+
+          for (j = 0; j < train.cars; j++) {
+            var carCenterDistance =
+              headDistanceInSegment - j * carLengthMeters - carLengthMeters / 2;
+
+            var pointData;
+            // TODO: セグメントをまたぐ車両の描画は未対応。ひとまず現在のセグメント内に描画
+            if (
+              carCenterDistance >= 0 &&
+              carCenterDistance <= currentSegment.distance
+            ) {
+              pointData = getPointAtDistance(
+                currentSegment.latlngs,
+                carCenterDistance
+              );
+            } else {
+              // セグメント外の車両は先頭車両と同じ位置に描画(仮)
+              pointData = getPointAtDistance(
+                currentSegment.latlngs,
+                headDistanceInSegment
+              );
+            }
+
+            if (!pointData) continue;
+
+            var carLatLng = pointData.latlng;
+            var carHeading = pointData.heading;
+            if (train.direction === -1) {
+              carHeading = (carHeading + 180) % 360;
+            }
+
+            var carLengthPx = metersToPixels(
+              CONFIG.trainCarDimensionsMeters.length,
+              carLatLng
+            );
+            var carWidthPx = metersToPixels(
+              CONFIG.trainCarDimensionsMeters.width,
+              carLatLng
+            );
+            var maxDim = Math.max(carLengthPx, carWidthPx) + 4; // 少し余裕を持たせる
+            var iconSize = [maxDim, maxDim];
+            var rotation = carHeading - 90;
+
+            var carIcon = L.divIcon({
+              className: "train-car-container",
+              html:
+                '<div class="train-car-body" style="background-color:' +
+                train.color +
+                "; width:" +
+                carLengthPx +
+                "px; height:" +
+                carWidthPx +
+                "px; transform: rotate(" +
+                rotation +
+                'deg);"></div>',
+              iconSize: iconSize,
+              iconAnchor: [maxDim / 2, maxDim / 2],
+            });
+
+            var carMarker = L.marker(carLatLng, { icon: carIcon }).addTo(map);
+            train.carLayers.push(carMarker);
+          }
+        }
+      }
+
+      // --- SAVE / LOAD GAME ---
+
+      function serializeLatLng(latlng) {
+        return latlng ? { lat: latlng.lat, lng: latlng.lng } : null;
+      }
+      function deserializeLatLng(obj) {
+        return obj ? L.latLng(obj.lat, obj.lng) : null;
+      }
+      function serializeLatLngs(latlngs) {
+        return (latlngs || []).map(serializeLatLng);
+      }
+      function deserializeLatLngs(arr) {
+        return (arr || []).map(deserializeLatLng);
+      }
+
+      /** ゲームの状態を保存する */
+      function saveGame() {
+        var savableState = {
+          assets: state.assets,
+          tracks: state.tracks.map(function (t) {
+            return {
+              id: t.id,
+              latlngs: serializeLatLngs(t.latlngs),
+              type: t.type,
+            };
+          }),
+          stations: state.stations.map(function (s) {
+            return {
+              id: s.id,
+              name: s.name,
+              latlng: serializeLatLng(s.latlng),
+              latlngs: serializeLatLngs(s.latlngs),
+              platformLength: s.platformLength,
+              revenueMultiplier: s.revenueMultiplier,
+            };
+          }),
+          lines: state.lines.map(function (l) {
+            return {
+              id: l.id,
+              name: l.name,
+              stationIds: l.stationIds,
+              color: l.color,
+              totalDistance: l.totalDistance,
+              assignedTrainIds: l.assignedTrainIds,
+              segments: l.segments.map(function (seg) {
+                return {
+                  startStationId: seg.startStationId,
+                  endStationId: seg.endStationId,
+                  latlngs: serializeLatLngs(seg.latlngs),
+                  distance: seg.distance,
+                };
+              }),
+            };
+          }),
+          trains: state.trains.map(function (t) {
+            return {
+              id: t.id,
+              type: t.type,
+              name: t.name,
+              cars: t.cars,
+              cost: t.cost,
+              color: t.color,
+              speed: t.speed,
+              totalLength: t.totalLength,
+              currentStationId: t.currentStationId,
+              currentLineId: t.currentLineId,
+              currentSegmentIndex: t.currentSegmentIndex,
+              direction: t.direction,
+              progress: t.progress,
+              isStopped: t.isStopped,
+            };
+          }),
+          currentLineColorIndex: state.currentLineColorIndex,
+        };
+
+        try {
+          localStorage.setItem(
+            "railBuilderSaveGame",
+            JSON.stringify(savableState)
+          );
+          ui.showMessage("ゲームをセーブしました！", false, 2000);
+        } catch (e) {
+          console.error("ゲームのセーブに失敗しました:", e);
+          ui.showMessage("ゲームのセーブに失敗しました。", false, 3000);
+        }
+      }
+
+      /** マップ上の全てのLeafletレイヤーをクリアする */
+      function clearMapLayers() {
+        map.eachLayer(function (layer) {
+          // ベースのタイルレイヤーと人口密度レイヤーは残す
+          if (
+            layer instanceof L.TileLayer ||
+            (populationDensityLayer && layer === populationDensityLayer)
+          ) {
+            // Keep the base tile layer and population density layer
+          } else {
+            map.removeLayer(layer);
+          }
+        });
+      }
+
+      /** ゲームの状態をロードする */
+      function loadGame() {
+        var savedData = localStorage.getItem("railBuilderSaveGame");
+        if (!savedData) {
+          ui.showMessage("保存されたゲームデータがありません。", false, 3000);
+          return;
+        }
+
+        try {
+          var loadedState = JSON.parse(savedData);
+
+          clearMapLayers(); // 人口密度レイヤーは残すように修正
+
+          // Reset state
+          state = {
+            assets: loadedState.assets,
+            tracks: [],
+            stations: [],
+            lines: [],
+            trains: [],
+            planning: { type: null, points: [], ghost: null },
+            lineBuildingMode: false,
+            selectedStationsForLine: [],
+            currentLineGhost: null,
+            selectedTrainToBuyId: null,
+            currentLineColorIndex: loadedState.currentLineColorIndex || 0,
+            selectedTrainToAssignId: null,
+            demolitionMode: false,
+            selectedForDemolition: null,
+          };
+
+          var i;
+
+          // Rebuild tracks
+          for (i = 0; i < loadedState.tracks.length; i++) {
+            var tData = loadedState.tracks[i];
+            var latlngs = deserializeLatLngs(tData.latlngs);
+            var trackLayer = L.polyline(latlngs, {
+              className: "track-line track-" + tData.type,
+              weight: 4,
+              opacity: 0.9,
+              id: tData.id,
+            }).addTo(map);
+            state.tracks.push({
+              id: tData.id,
+              latlngs: latlngs,
+              layer: trackLayer,
+              type: tData.type,
+            });
+            trackLayer.on("click", function (e) {
+              e.originalEvent.stopPropagation();
+              if (state.demolitionMode) {
+                selectForDemolition("track", this.options.id);
+              }
+            });
+          }
+
+          // Rebuild stations
+          for (i = 0; i < loadedState.stations.length; i++) {
+            var sData = loadedState.stations[i];
+            var latlng = deserializeLatLng(sData.latlng);
+            var latlngs = deserializeLatLngs(sData.latlngs);
+            var platformLayer = L.polyline(latlngs, {
+              className: "station-platform",
+              color: "#d9534f",
+              weight: 6,
+              opacity: 0.9,
+              id: sData.id,
+            }).addTo(map);
+            var marker = L.marker(latlng, {
+              icon: L.divIcon({
+                className: "station-marker",
+                iconSize: [16, 16],
+              }),
+              id: sData.id,
+            }).addTo(map);
+            var newStation = {
+              id: sData.id,
+              name: sData.name,
+              latlng: latlng,
+              latlngs: latlngs,
+              platformLength: sData.platformLength,
+              layer: platformLayer,
+              marker: marker,
+              revenueMultiplier: sData.revenueMultiplier || 1.0,
+            };
+            state.stations.push(newStation);
+            marker.on("click", function (e) {
+              e.originalEvent.stopPropagation();
+              var id = e.target.options.id;
+              if (state.lineBuildingMode) {
+                handleStationClickForLineBuilding(id);
+              } else if (state.demolitionMode) {
+                selectForDemolition("station", id);
+              }
+            });
+            platformLayer.on("click", function (e) {
+              e.originalEvent.stopPropagation();
+              var id = e.target.options.id;
+              if (state.demolitionMode) {
+                selectForDemolition("station", id);
+              }
+            });
+            // ロード時に人口密度に基づいて収益倍率を再設定
+            setStationRevenueMultiplier(newStation); // ロード時にも人口密度を適用
+          }
+
+          // Rebuild lines
+          for (i = 0; i < loadedState.lines.length; i++) {
+            var lData = loadedState.lines[i];
+            var linePathLatLngs = [];
+            if (lData.segments && lData.segments.length > 0) {
+              linePathLatLngs = deserializeLatLngs(lData.segments[0].latlngs);
+              for (var j = 1; j < lData.segments.length; j++) {
+                var segLatLngs = deserializeLatLngs(lData.segments[j].latlngs);
+                Array.prototype.push.apply(
+                  linePathLatLngs,
+                  segLatLngs.slice(1)
+                );
+              }
+            }
+            var lineLayer = L.polyline(linePathLatLngs, {
+              className: "line-color",
+              color: lData.color,
+              weight: 5,
+              opacity: 0.8,
+              id: lData.id,
+            }).addTo(map);
+            state.lines.push({
+              id: lData.id,
+              name: lData.name,
+              stationIds: lData.stationIds,
+              color: lData.color,
+              layer: lineLayer,
+              totalDistance: lData.totalDistance,
+              assignedTrainIds: lData.assignedTrainIds,
+              segments: lData.segments.map(function (seg) {
+                // Corrected from 'l.segments' to 'lData.segments'
+                return {
+                  startStationId: seg.startStationId,
+                  endStationId: seg.endStationId,
+                  latlngs: deserializeLatLngs(seg.latlngs),
+                  distance: seg.distance,
+                };
+              }),
+            });
+          }
+
+          // Rebuild trains
+          for (i = 0; i < loadedState.trains.length; i++) {
+            var trainData = loadedState.trains[i];
+            var newTrain = Object.assign({}, trainData);
+            newTrain.stopTimer = null;
+            newTrain.carLayers = [];
+            newTrain.currentLatLng = null; // will be calculated on next update
+            newTrain.currentHeading = 0;
+            state.trains.push(newTrain);
+          }
+
+          ui.updateFinance();
+          ui.renderTrainShop();
+          renderTrains();
+          ui.showMessage("ゲームをロードしました！", false, 2000);
+        } catch (e) {
+          console.error("ゲームのロードに失敗しました:", e);
+          ui.showMessage("ゲームのロードに失敗しました。", false, 5000);
+        }
+      }
+
+      // ===================================================================
+      // 人口密度TIFF関連の機能追加
+      // ===================================================================
+
+      // グローバル変数としてGeoTIFFオブジェクトとラスタデータを保持
+      var populationDensityTiff = null;
+      var populationDensityGeoTransform = null; // [minX, minY, maxX, maxY]
+      var populationDensityWidth = 0;
+      var populationDensityHeight = 0;
+      var populationDensityLayer = null; // Leafletの人口密度レイヤー
+
+      // TIFFファイルのパス (ユーザーが同じディレクトリに置くという前提)
+      var POPULATION_DENSITY_TIFF_PATH = "./zinkou.tif";
+
+      /**
+       * 人口密度GeoTIFFファイルを読み込み、データを初期化する。
+       * 読み込みが完了したら、人口密度レイヤーをマップに追加する。
+       */
+      async function loadPopulationDensityTiff() {
+        try {
+          ui.showMessage("人口密度データを読み込み中...", true);
+          const tiff = await GeoTIFF.fromUrl(POPULATION_DENSITY_TIFF_PATH);
+          const image = await tiff.getImage(); // 最初のイメージを取得
+
+          populationDensityGeoTransform = image.getBoundingBox(); // [minX, minY, maxX, maxY]
+          populationDensityWidth = image.getWidth();
+          populationDensityHeight = image.getHeight();
+
+          // geotiff.jsが内部でimageオブジェクトをキャッシュするように、一度取得しておく
+          // getPixel() を使うために必要
+          populationDensityTiff = tiff; // TIFFオブジェクト全体を保持
+          populationDensityTiff._image = image; // imageオブジェクトも保持
+
+          ui.showMessage(
+            "人口密度データの読み込みが完了しました。",
+            false,
+            3000
+          );
+          console.log(
+            "Population Density TIFF loaded:",
+            populationDensityGeoTransform,
+            "Width:",
+            populationDensityWidth,
+            "Height:",
+            populationDensityHeight
+          );
+
+          // ロード完了後に人口密度レイヤーを追加
+          addPopulationDensityLayer();
+
+          // 既存の駅があれば、人口密度に基づいて収益倍率を更新
+          for (var i = 0; i < state.stations.length; i++) {
+            setStationRevenueMultiplier(state.stations[i]);
+          }
+        } catch (error) {
+          console.error("人口密度TIFFの読み込みに失敗しました:", error);
+          ui.showMessage(
+            "人口密度データの読み込みに失敗しました。ファイルがサーバーに正しく配置されているか、パスが正しいか確認してください。",
+            false,
+            7000
+          );
+        }
+      }
+
+      /**
+       * 指定された緯度経度における人口密度を取得する。
+       * @param {L.LatLng} latlng - 緯度経度。
+       * @returns {number} - 人口密度。データがない場合は0。
+       */
+      function getPopulationDensity(latlng) {
+        if (
+          !populationDensityTiff ||
+          !populationDensityGeoTransform ||
+          !populationDensityTiff._image
+        ) {
+          return 0; // データがロードされていない
+        }
+
+        const [minX, minY, maxX, maxY] = populationDensityGeoTransform;
+        const pixelWidth = (maxX - minX) / populationDensityWidth;
+        const pixelHeight = (maxY - minY) / populationDensityHeight;
+
+        // 緯度経度をピクセル座標に変換 (WorldPopデータは通常WGS84 (経度, 緯度))
+        // GeoTIFFのY軸は上から下へ増加することが多いため、緯度方向は maxY から引く
+        const col = Math.floor((latlng.lng - minX) / pixelWidth);
+        const row = Math.floor((maxY - latlng.lat) / pixelHeight);
+
+        if (
+          col < 0 ||
+          col >= populationDensityWidth ||
+          row < 0 ||
+          row >= populationDensityHeight
+        ) {
+          return 0; // 範囲外
+        }
+
+        // `getPixel` は非同期ではないため、同期的にピクセル値を取得
+        const pixel = populationDensityTiff._image.getPixel(col, row);
+        return pixel && pixel.length > 0 ? pixel[0] : 0; // 最初のバンドの値を取得
+      }
+
+      /**
+       * 駅の収益倍率を人口密度に基づいて設定し、ポップアップを更新する。
+       * @param {object} station - 駅オブジェクト。
+       */
+      function setStationRevenueMultiplier(station) {
+        const density = getPopulationDensity(station.latlng);
+        let multiplier = 1.0;
+
+        // 人口密度に応じた倍率の計算ロジック
+        // WorldPopのデータ値域は非常に広いので、対数スケールや特定の閾値でマッピングを調整
+        // ここでは一般的な都市部〜郊外の人口密度を想定した例
+        if (density > 5000) {
+          // 非常に高い (例: 都心部)
+          multiplier = 2.5;
+        } else if (density > 1000) {
+          // 高い (例: 地方都市中心部)
+          multiplier = 2.0;
+        } else if (density > 100) {
+          // 中程度 (例: 郊外住宅地)
+          multiplier = 1.5;
+        } else if (density > 10) {
+          // 低い (例: 田園地帯)
+          multiplier = 1.0;
+        } else {
+          // 非常に低い (例: 山間部)
+          multiplier = 0.5;
+        }
+
+        station.revenueMultiplier = multiplier;
+        // ポップアップがバインドされているか確認してから更新
+        if (station.marker && station.marker.getPopup()) {
+          station.marker.getPopup().setContent(
+            "<b>" +
+              station.name +
+              "</b><br>" +
+              "ID: " +
+              station.id +
+              "<br>" +
+              "プラットフォーム長: " +
+              station.platformLength.toFixed(1) +
+              "m<br>" +
+              "人口密度: " +
+              Math.round(density).toLocaleString() +
+              "人/km²<br>" + // 単位を追加
+              "収益倍率: " +
+              station.revenueMultiplier.toFixed(2)
+          );
+        }
+      }
+
+      /**
+       * 人口密度に応じた色（透明〜青〜赤〜ピンク）を返す。
+       * @param {number} density - 人口密度。
+       * @returns {string} - RGBAカラー文字列。
+       */
+      function getDensityColor(density) {
+        // WorldPopのデータは人口/ピクセル（多くは1km四方）なので、値域を考慮して調整
+        // 例: 0-10000 人/km^2 を想定。実際のデータに合わせて調整してください。
+
+        var r, g, b, a;
+
+        if (density <= 0) {
+          return "rgba(0,0,0,0)"; // 透明
+        } else if (density < 50) {
+          // 低密度 (0-50)
+          var ratio = density / 50; // 0-1
+          r = Math.floor(0 + 100 * ratio);
+          g = Math.floor(0 + 150 * ratio);
+          b = 255; // 青
+          a = 0.1 + 0.3 * ratio; // 透明度を上げる
+        } else if (density < 500) {
+          // 中低密度 (50-500)
+          var ratio = (density - 50) / 450; // 0-1
+          r = Math.floor(100 + 155 * ratio); // 青から赤へ
+          g = Math.floor(150 * (1 - ratio));
+          b = Math.floor(255 * (1 - ratio));
+          a = 0.4 + 0.2 * ratio;
+        } else if (density < 2000) {
+          // 中高密度 (500-2000)
+          var ratio = (density - 500) / 1500; // 0-1
+          r = 255; // 赤
+          g = Math.floor(0 + 100 * ratio);
+          b = Math.floor(0 + 100 * ratio);
+          a = 0.6 + 0.2 * ratio;
+        } else {
+          // 高密度 (2000+)
+          var ratio = Math.min(1, (density - 2000) / 8000); // 2000-10000の範囲を0-1に正規化
+          r = 255;
+          g = Math.floor(100 * (1 - ratio)); // 緑成分を減らす
+          b = Math.floor(100 + 155 * ratio); // 青成分を増やす (ピンクへ)
+          a = 0.8 + 0.1 * ratio;
+        }
+        return "rgba(" + r + "," + g + "," + b + "," + a + ")";
+      }
+
+      /**
+       * 人口密度をLeafletマップ上に表示するカスタムGridLayer。
+       * 各タイルでGeoTIFFから人口密度をサンプリングし、色付けして描画します。
+       */
+      L.GridLayer.PopulationDensity = L.GridLayer.extend({
+        options: {
+          tileSize: 256, // 標準のタイルサイズ
+          opacity: 0.6, // レイヤーの透明度
+          samplingResolution: 8, // タイル内のサンプリング解像度 (例: 8x8ピクセルごとに1回サンプリング)
+        },
+
+        createTile: function (coords) {
+          const tile = L.DomUtil.create("canvas", "leaflet-tile");
+          tile.width = tile.height = this.options.tileSize;
+          const ctx = tile.getContext("2d");
+
+          if (!populationDensityTiff || !populationDensityTiff._image) {
+            // TIFFデータがまだロードされていない場合は描画しない
+            return tile;
+          }
+
+          // タイル内のサンプリングステップ
+          const step = this.options.samplingResolution;
+
+          for (let x = 0; x < this.options.tileSize; x += step) {
+            for (let y = 0; y < this.options.tileSize; y += step) {
+              // キャンバス上のピクセル座標 (x, y) をマップ上のピクセル座標に変換
+              const mapPixelX = coords.x * this.options.tileSize + x;
+              const mapPixelY = coords.y * this.options.tileSize + y;
+
+              // マップ上のピクセル座標を緯度経度に変換
+              const latlng = map.unproject([mapPixelX, mapPixelY], coords.z);
+
+              // 緯度経度から人口密度を取得
+              const density = getPopulationDensity(latlng);
+
+              // 人口密度に応じた色を取得
+              const color = getDensityColor(density);
+
+              // 人口密度が0より大きい場合のみ描画
+              if (density > 0) {
+                ctx.fillStyle = color;
+                ctx.fillRect(x, y, step, step);
+              }
+            }
+          }
+          return tile;
+        },
+      });
+
+      // カスタムレイヤーのファクトリ関数
+      L.gridLayer.populationDensity = function (options) {
+        return new L.GridLayer.PopulationDensity(options);
+      };
+
+      /**
+       * 人口密度レイヤーをマップに追加する。
+       */
+      function addPopulationDensityLayer() {
+        if (populationDensityLayer) {
+          map.removeLayer(populationDensityLayer);
+        }
+        populationDensityLayer = L.gridLayer
+          .populationDensity({ opacity: 0.6 })
+          .addTo(map);
+        // 他のレイヤー（線路や駅）の下に表示されるようにZ-indexを設定
+        // ベースマップのZ-indexは通常0なので、0に設定することでその上に表示される
+        // 他のオブジェクトは通常L.MarkerやL.Polylineで、デフォルトのZ-indexはもっと高い
+        populationDensityLayer.setZIndex(1);
+      }
+
+      // --- GAME LOOP ---
+      setInterval(updateTrains, CONFIG.updateInterval);
+
+      // --- INITIAL LOAD ---
+      document.addEventListener("DOMContentLoaded", function () {
+        loadPopulationDensityTiff(); // ページロード時に人口密度データを読み込む
+      });
+    </script>
+  </body>
+</html>
