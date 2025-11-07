@@ -3247,6 +3247,22 @@
       document.addEventListener("DOMContentLoaded", function () {
         loadPopulationDensityTiff(); // ページロード時に人口密度データを読み込む
       });
+  async function createPixelReader(tiffUrl) {
+    const tiff = await GeoTIFF.fromUrl(tiffUrl);
+    const image = await tiff.getImage();
+    const width = image.getWidth();
+    const height = image.getHeight();
+    const rasters = await image.readRasters();
+
+    function getPixel(x, y, band = 0) {
+      if (x < 0 || y < 0 || x >= width || y >= height) {
+        throw new Error("座標が範囲外です");
+      }
+      return rasters[band][y * width + x];
+    }
+
+    return getPixel;
+  }
     </script>
   </body>
 </html>
