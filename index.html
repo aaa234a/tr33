@@ -1792,7 +1792,7 @@
               // newStation.revenueMultiplier = revenueMultiplier; // 既存の地名APIからの収益倍率設定ロジックは削除
 
               // 人口密度に基づいて収益倍率を設定
-              await setStationRevenueMultiplier(newStation);
+               setStationRevenueMultiplier(newStation);
 
               ui.showMessage(
                 resolvedName +
@@ -1810,7 +1810,7 @@
               console.error("地名APIの取得に失敗しました:", error);
               // 地名APIが失敗しても人口密度は設定する
               newStation.name = "無名駅 (" + stationCenter.lat.toFixed(4) + ")";
-              await setStationRevenueMultiplier(newStation);
+               setStationRevenueMultiplier(newStation);
               ui.showMessage(
                 "地名取得失敗: " +
                   newStation.name +
@@ -2908,7 +2908,7 @@
               }
             });
             // ロード時に人口密度に基づいて収益倍率を再設定
-            await setStationRevenueMultiplier(newStation); // ロード時にも人口密度を適用
+             setStationRevenueMultiplier(newStation); // ロード時にも人口密度を適用
           }
 
           // Rebuild lines
