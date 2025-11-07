@@ -2987,55 +2987,51 @@
       // TIFFファイルのパス (ユーザーが同じディレクトリに置くという前提)
       var POPULATION_DENSITY_TIFF_PATH = "./zinkou.tif";
 
-      /**
-       * 人口密度GeoTIFFファイルを読み込み、データを初期化する。
-       * 読み込みが完了したら、人口密度レイヤーをマップに追加する。
-       */
-      async function loadPopulationDensityTiff() {
-        try {
-          ui.showMessage("人口密度データを読み込み中...", true);
-          const tiff = await GeoTIFF.fromUrl(POPULATION_DENSITY_TIFF_PATH);
-          const image = await tiff.getImage(); // 最初のイメージを取得
+async function loadPopulationDensityTiff() {
+  try {
+    ui.showMessage("人口密度データを読み込み中...", true);
 
-          populationDensityGeoTransform = image.getBoundingBox(); // [minX, minY, maxX, maxY]
-          populationDensityWidth = image.getWidth();
-          populationDensityHeight = image.getHeight();
+    // fetchでTIFFを取得
+    const response = await fetch(POPULATION_DENSITY_TIFF_PATH);
+    const arrayBuffer = await response.arrayBuffer();
 
-          // geotiff.jsが内部でimageオブジェクトをキャッシュするように、一度取得しておく
-          // getPixel() を使うために必要
-          populationDensityTiff = tiff; // TIFFオブジェクト全体を保持
-          populationDensityTiff._image = image; // imageオブジェクトも保持
+    // GeoTIFFを読み込む
+    const tiff = await GeoTIFF.fromArrayBuffer(arrayBuffer);
+    const image = await tiff.getImage();
 
-          ui.showMessage(
-            "人口密度データの読み込みが完了しました。",
-            false,
-            3000
-          );
-          console.log(
-            "Population Density TIFF loaded:",
-            populationDensityGeoTransform,
-            "Width:",
-            populationDensityWidth,
-            "Height:",
-            populationDensityHeight
-          );
+    populationDensityGeoTransform = image.getBoundingBox();
+    populationDensityWidth = image.getWidth();
+    populationDensityHeight = image.getHeight();
 
-          // ロード完了後に人口密度レイヤーを追加
-          addPopulationDensityLayer();
+    // getPixel() を作って既存コード互換にする
+    const rasters = await image.readRasters();
+    image.getPixel = function(x, y, band = 0) {
+      if (x < 0 || y < 0 || x >= populationDensityWidth || y >= populationDensityHeight) return [0];
+      return [rasters[band][y * populationDensityWidth + x]];
+    };
 
-          // 既存の駅があれば、人口密度に基づいて収益倍率を更新
-          for (var i = 0; i < state.stations.length; i++) {
-            setStationRevenueMultiplier(state.stations[i]);
-          }
-        } catch (error) {
-          console.error("人口密度TIFFの読み込みに失敗しました:", error);
-          ui.showMessage(
-            "人口密度データの読み込みに失敗しました。ファイルがサーバーに正しく配置されているか、パスが正しいか確認してください。",
-            false,
-            7000
-          );
-        }
-      }
+    populationDensityTiff = { _image: image }; // 既存コード互換
+    ui.showMessage("人口密度データの読み込みが完了しました。", false, 3000);
+
+    console.log("Population Density TIFF loaded:", populationDensityGeoTransform,
+                "Width:", populationDensityWidth, "Height:", populationDensityHeight);
+
+    addPopulationDensityLayer();
+
+    for (var i = 0; i < state.stations.length; i++) {
+      setStationRevenueMultiplier(state.stations[i]);
+    }
+
+  } catch (error) {
+    console.error("人口密度TIFFの読み込みに失敗しました:", error);
+    ui.showMessage(
+      "人口密度データの読み込みに失敗しました。ファイルがサーバーに正しく配置されているか、パスが正しいか確認してください。",
+      false,
+      7000
+    );
+  }
+}
+
 
       /**
        * 指定された緯度経度における人口密度を取得する。
