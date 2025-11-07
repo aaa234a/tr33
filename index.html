@@ -3036,6 +3036,13 @@
           );
         }
       }
+function latLngToPixel(latlng, bbox, width, height) {
+  const [minX, minY, maxX, maxY] = bbox;
+
+  const x = Math.floor((latlng.lng - minX) / (maxX - minX) * width);
+  const y = Math.floor((maxY - latlng.lat) / (maxY - minY) * height); // Y軸は上から下へ増加
+  return [x, y];
+}
 
       /**
        * 指定された緯度経度における人口密度を取得する。
@@ -3043,22 +3050,15 @@
        * @returns {number} - 人口密度。データがない場合は0。
        */
 async function getPopulationDensity(latlng) {
-  if (!populationDensityTiff || !populationDensityGeoTransform) return 0;
-
-  const [minX, minY, maxX, maxY] = populationDensityGeoTransform;
-  const pixelWidth = (maxX - minX) / populationDensityWidth;
-  const pixelHeight = (maxY - minY) / populationDensityHeight;
-
-  const col = Math.floor((latlng.lng - minX) / pixelWidth);
-  const row = Math.floor((maxY - latlng.lat) / pixelHeight);
-
-  if (col < 0 || col >= populationDensityWidth || row < 0 || row >= populationDensityHeight) {
-    return 0;
-  }
+  if (!populationDensityTiff) return 0;
 
   const image = await populationDensityTiff.getImage();
-  const raster = await image.readRasters({ window: [col, row, col+1, row+1] });
-  return raster[0][0]; // 最初のバンドの値
+  const [x, y] = latLngToPixel(latlng, populationDensityGeoTransform, populationDensityWidth, populationDensityHeight);
+
+  if (x < 0 || x >= populationDensityWidth || y < 0 || y >= populationDensityHeight) return 0;
+
+  const raster = await image.readRasters({ window: [x, y, x + 1, y + 1] });
+  return raster[0][0]; // 最初のバンド
 }
       /**
        * 駅の収益倍率を人口密度に基づいて設定し、ポップアップを更新する。
