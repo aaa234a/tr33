@@ -3052,16 +3052,14 @@ async function getPopulationDensity(latlng) {
   const col = Math.floor((latlng.lng - minX) / pixelWidth);
   const row = Math.floor((maxY - latlng.lat) / pixelHeight);
 
-  if (col < 0 || col >= populationDensityWidth || row < 0 || row >= populationDensityHeight)
+  if (col < 0 || col >= populationDensityWidth || row < 0 || row >= populationDensityHeight) {
     return 0;
+  }
 
-  // 画像からラスタを取得
   const image = await populationDensityTiff.getImage();
-  const rasters = await image.readRasters({ window: [col, row, col + 1, row + 1] });
-  return rasters[0][0]; // 最初のバンドの値
+  const raster = await image.readRasters({ window: [col, row, col+1, row+1] });
+  return raster[0][0]; // 最初のバンドの値
 }
-
-
       /**
        * 駅の収益倍率を人口密度に基づいて設定し、ポップアップを更新する。
        * @param {object} station - 駅オブジェクト。
