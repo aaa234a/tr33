@@ -659,7 +659,7 @@
             cost: 1000000,
             color: "#007bff",
             defaultSpeed: 100,
-          }, // 10両編成、コスト100万、時速100km
+          },
           {
             id: "e259",
             name: "E259系成田エクスプレス",
@@ -667,7 +667,7 @@
             cost: 1500000,
             color: "#d9534f",
             defaultSpeed: 130,
-          }, // 6両編成、コスト150万、時速130km
+          },
           {
             id: "n700s",
             name: "N700S系新幹線",
@@ -675,8 +675,81 @@
             cost: 5000000,
             color: "#5cb85c",
             defaultSpeed: 285,
-          }, // 16両編成、コスト500万、時速285km
+          },
+          {
+            id: "485",
+            name: "485系特急電車",
+            cars: 8,
+            cost: 2000000,
+            color: "#f0ad4e",
+            defaultSpeed: 120,
+          },
+          {
+            id: "kiha40",
+            name: "キハ40系気動車",
+            cars: 4,
+            cost: 800000,
+            color: "#6f42c1",
+            defaultSpeed: 95,
+          },
+          {
+            id: "e6",
+            name: "E6系スーパーこまち",
+            cars: 7,
+            cost: 3000000,
+            color: "#d63384",
+            defaultSpeed: 320,
+          },
+          {
+            id: "h5",
+            name: "H5系北海道新幹線",
+            cars: 10,
+            cost: 4000000,
+            color: "#20c997",
+            defaultSpeed: 260,
+          },
+          {
+            id: "shinkansen-e7",
+            name: "E7系北陸新幹線",
+            cars: 12,
+            cost: 4500000,
+            color: "#6610f2",
+            defaultSpeed: 275,
+          },
+          {
+            id: "shinkansen-e3",
+            name: "E3系つばさ",
+            cars: 7,
+            cost: 2800000,
+            color: "#fd7e14",
+            defaultSpeed: 275,
+          },
+          {
+            id: "sunrise",
+            name: "寝台特急サンライズ瀬戸・出雲",
+            cars: 14,
+            cost: 3500000,
+            color: "#20c997",
+            defaultSpeed: 110,
+          },
+          {
+            id: "torokko",
+            name: "嵯峨野トロッコ列車",
+            cars: 5,
+            cost: 1200000,
+            color: "#ffc107",
+            defaultSpeed: 50,
+          },
+          {
+            id: "local",
+            name: "地方普通列車",
+            cars: 3,
+            cost: 500000,
+            color: "#6c757d",
+            defaultSpeed: 80,
+          },
         ],
+
         trainCarDimensionsMeters: {
           // 車両のサイズ (メートル)
           length: 20, // 車両の進行方向の長さ
@@ -1792,7 +1865,7 @@
               // newStation.revenueMultiplier = revenueMultiplier; // 既存の地名APIからの収益倍率設定ロジックは削除
 
               // 人口密度に基づいて収益倍率を設定
-               setStationRevenueMultiplier(newStation);
+              setStationRevenueMultiplier(newStation);
 
               ui.showMessage(
                 resolvedName +
@@ -1810,7 +1883,7 @@
               console.error("地名APIの取得に失敗しました:", error);
               // 地名APIが失敗しても人口密度は設定する
               newStation.name = "無名駅 (" + stationCenter.lat.toFixed(4) + ")";
-               setStationRevenueMultiplier(newStation);
+              setStationRevenueMultiplier(newStation);
               ui.showMessage(
                 "地名取得失敗: " +
                   newStation.name +
@@ -2908,7 +2981,7 @@
               }
             });
             // ロード時に人口密度に基づいて収益倍率を再設定
-             setStationRevenueMultiplier(newStation); // ロード時にも人口密度を適用
+            setStationRevenueMultiplier(newStation); // ロード時にも人口密度を適用
           }
 
           // Rebuild lines
@@ -2973,165 +3046,206 @@
         }
       }
 
- // ===================================================================
-// 人口密度TIFF関連の機能追加
-// ===================================================================
+      // ===================================================================
+      // 人口密度TIFF関連の機能追加
+      // ===================================================================
 
-// グローバル変数としてGeoTIFFオブジェクトとラスタデータを保持
-var populationDensityData = null; // 2次元配列 [y][x] で人口密度を保持
-var populationDensityGeoTransform = null; // [minX, minY, maxX, maxY]
-var populationDensityWidth = 0;
-var populationDensityHeight = 0;
-var populationDensityLayer = null; // Leafletの人口密度レイヤー
+      // グローバル変数としてGeoTIFFオブジェクトとラスタデータを保持
+      var populationDensityData = null; // 2次元配列 [y][x] で人口密度を保持
+      var populationDensityGeoTransform = null; // [minX, minY, maxX, maxY]
+      var populationDensityWidth = 0;
+      var populationDensityHeight = 0;
+      var populationDensityLayer = null; // Leafletの人口密度レイヤー
 
-var POPULATION_DENSITY_TIFF_PATH = "./zinkou.tif";
+      var POPULATION_DENSITY_TIFF_PATH = "./zinkou.tif";
 
-// GeoTIFFを読み込み、ラスタデータをキャッシュ
-async function loadPopulationDensityTiff() {
-  try {
-    ui.showMessage("人口密度データを読み込み中...", true);
-    const tiff = await GeoTIFF.fromUrl(POPULATION_DENSITY_TIFF_PATH);
-    const image = await tiff.getImage();
-    
-    let bbox = image.getBoundingBox();
-    if (!Array.isArray(bbox)) {
-      bbox = [bbox.left, bbox.bottom, bbox.right, bbox.top];
-    }
-    populationDensityGeoTransform = bbox;
-    populationDensityWidth = image.getWidth();
-    populationDensityHeight = image.getHeight();
+      // GeoTIFFを読み込み、ラスタデータをキャッシュ
+      async function loadPopulationDensityTiff() {
+        try {
+          ui.showMessage("人口密度データを読み込み中...", true);
+          const tiff = await GeoTIFF.fromUrl(POPULATION_DENSITY_TIFF_PATH);
+          const image = await tiff.getImage();
 
-    // 全ピクセルを読み込んで配列に保持
-    const raster = await image.readRasters();
-    populationDensityData = [];
-    for (let y = 0; y < populationDensityHeight; y++) {
-      populationDensityData[y] = [];
-      for (let x = 0; x < populationDensityWidth; x++) {
-        populationDensityData[y][x] = raster[0][y * populationDensityWidth + x];
-      }
-    }
+          let bbox = image.getBoundingBox();
+          if (!Array.isArray(bbox)) {
+            bbox = [bbox.left, bbox.bottom, bbox.right, bbox.top];
+          }
+          populationDensityGeoTransform = bbox;
+          populationDensityWidth = image.getWidth();
+          populationDensityHeight = image.getHeight();
 
-    ui.showMessage("人口密度データの読み込みが完了しました。", false, 3000);
-    console.log("Population Density TIFF loaded:", populationDensityGeoTransform, "Width:", populationDensityWidth, "Height:", populationDensityHeight);
+          // 全ピクセルを読み込んで配列に保持
+          const raster = await image.readRasters();
+          populationDensityData = [];
+          for (let y = 0; y < populationDensityHeight; y++) {
+            populationDensityData[y] = [];
+            for (let x = 0; x < populationDensityWidth; x++) {
+              populationDensityData[y][x] =
+                raster[0][y * populationDensityWidth + x];
+            }
+          }
 
-    // 駅の収益倍率を更新
-    for (let i = 0; i < state.stations.length; i++) {
-      setStationRevenueMultiplier(state.stations[i]);
-    }
+          ui.showMessage(
+            "人口密度データの読み込みが完了しました。",
+            false,
+            3000
+          );
+          console.log(
+            "Population Density TIFF loaded:",
+            populationDensityGeoTransform,
+            "Width:",
+            populationDensityWidth,
+            "Height:",
+            populationDensityHeight
+          );
 
-    // 必要ならレイヤーを追加
-    // addPopulationDensityLayer();
+          // 駅の収益倍率を更新
+          for (let i = 0; i < state.stations.length; i++) {
+            setStationRevenueMultiplier(state.stations[i]);
+          }
 
-  } catch (error) {
-    console.error("人口密度TIFFの読み込みに失敗しました:", error);
-    ui.showMessage("人口密度データの読み込みに失敗しました。ファイルパスを確認してください。", false, 7000);
-  }
-}
-
-// 緯度経度 → ラスタ座標
-function latLngToPixel(latlng) {
-  const [minX, minY, maxX, maxY] = populationDensityGeoTransform;
-  const x = Math.floor((latlng.lng - minX) / (maxX - minX) * populationDensityWidth);
-  const y = Math.floor((maxY - latlng.lat) / (maxY - minY) * populationDensityHeight);
-  return [x, y];
-}
-
-// 人口密度を取得（キャッシュ配列から同期で取得）
-function getPopulationDensity(latlng) {
-  if (!populationDensityData) return 0;
-  const [x, y] = latLngToPixel(latlng);
-  if (x < 0 || x >= populationDensityWidth || y < 0 || y >= populationDensityHeight) return 0;
-  return populationDensityData[y][x];
-}
-
-// 駅の収益倍率を設定
-function setStationRevenueMultiplier(station) {
-  const density = getPopulationDensity(station.latlng);
-  let multiplier = 1.0;
-
-  if (density > 10000) multiplier = 2.5;
-  else if (density > 5000) multiplier = 2.0;
-  else if (density > 1000) multiplier = 1.5;
-  else if (density > 500) multiplier = 1.0;
-  else multiplier = 0.5;
-
-  station.revenueMultiplier = multiplier;
-
-  if (station.marker && station.marker.getPopup()) {
-    station.marker.getPopup().setContent(
-      `<b>${station.name}</b><br>ID: ${station.id}<br>` +
-      `プラットフォーム長: ${station.platformLength.toFixed(1)}m<br>` +
-      `人口密度: ${Math.round(density).toLocaleString()}人/km²<br>` +
-      `収益倍率: ${station.revenueMultiplier.toFixed(2)}`
-    );
-  }
-}
-
-// 人口密度カラー取得
-function getDensityColor(density) {
-  if (density <= 0) return "rgba(0,0,0,0)";
-  let r, g, b, a;
-  if (density < 50) {
-    const ratio = density / 50;
-    r = 100 * ratio; g = 150 * ratio; b = 255; a = 0.1 + 0.3 * ratio;
-  } else if (density < 500) {
-    const ratio = (density - 50) / 450;
-    r = 100 + 155 * ratio; g = 150 * (1 - ratio); b = 255 * (1 - ratio); a = 0.4 + 0.2 * ratio;
-  } else if (density < 2000) {
-    const ratio = (density - 500) / 1500;
-    r = 255; g = 100 * ratio; b = 100 * ratio; a = 0.6 + 0.2 * ratio;
-  } else {
-    const ratio = Math.min(1, (density - 2000) / 8000);
-    r = 255; g = Math.floor(100 * (1 - ratio)); b = 100 + 155 * ratio; a = 0.8 + 0.1 * ratio;
-  }
-  return `rgba(${Math.floor(r)},${Math.floor(g)},${Math.floor(b)},${a})`;
-}
-
-// Leaflet人口密度レイヤー
-L.GridLayer.PopulationDensity = L.GridLayer.extend({
-  options: { tileSize: 256, opacity: 0.6, samplingResolution: 24 },
-  createTile: function(coords) {
-    const tile = L.DomUtil.create("canvas", "leaflet-tile");
-    tile.width = tile.height = this.options.tileSize;
-    const ctx = tile.getContext("2d");
-    if (!populationDensityData) return tile;
-
-    const step = this.options.samplingResolution;
-    for (let x = 0; x < this.options.tileSize; x += step) {
-      for (let y = 0; y < this.options.tileSize; y += step) {
-        const mapPixelX = coords.x * this.options.tileSize + x;
-        const mapPixelY = coords.y * this.options.tileSize + y;
-        const latlng = map.unproject([mapPixelX, mapPixelY], coords.z);
-        const density = getPopulationDensity(latlng);
-        if (density > 0) {
-          ctx.fillStyle = getDensityColor(density);
-          ctx.fillRect(x, y, step, step);
+          // 必要ならレイヤーを追加
+          // addPopulationDensityLayer();
+        } catch (error) {
+          console.error("人口密度TIFFの読み込みに失敗しました:", error);
+          ui.showMessage(
+            "人口密度データの読み込みに失敗しました。ファイルパスを確認してください。",
+            false,
+            7000
+          );
         }
       }
-    }
-    return tile;
-  }
-});
 
-L.gridLayer.populationDensity = function(options) {
-  return new L.GridLayer.PopulationDensity(options);
-};
+      // 緯度経度 → ラスタ座標
+      function latLngToPixel(latlng) {
+        const [minX, minY, maxX, maxY] = populationDensityGeoTransform;
+        const x = Math.floor(
+          ((latlng.lng - minX) / (maxX - minX)) * populationDensityWidth
+        );
+        const y = Math.floor(
+          ((maxY - latlng.lat) / (maxY - minY)) * populationDensityHeight
+        );
+        return [x, y];
+      }
 
-function addPopulationDensityLayer() {
-  if (populationDensityLayer) map.removeLayer(populationDensityLayer);
-  populationDensityLayer = L.gridLayer.populationDensity({ opacity: 0.6 }).addTo(map);
-  populationDensityLayer.setZIndex(1);
-}
+      // 人口密度を取得（キャッシュ配列から同期で取得）
+      function getPopulationDensity(latlng) {
+        if (!populationDensityData) return 0;
+        const [x, y] = latLngToPixel(latlng);
+        if (
+          x < 0 ||
+          x >= populationDensityWidth ||
+          y < 0 ||
+          y >= populationDensityHeight
+        )
+          return 0;
+        return populationDensityData[y][x];
+      }
 
-// --- GAME LOOP ---
-setInterval(updateTrains, CONFIG.updateInterval);
+      // 駅の収益倍率を設定
+      function setStationRevenueMultiplier(station) {
+        const density = getPopulationDensity(station.latlng);
+        let multiplier = 1.0;
 
-// --- INITIAL LOAD ---
-document.addEventListener("DOMContentLoaded", function() {
-  loadPopulationDensityTiff();
-});
+        if (density > 10000) multiplier = 2.5;
+        else if (density > 5000) multiplier = 2.0;
+        else if (density > 1000) multiplier = 1.5;
+        else if (density > 500) multiplier = 1.0;
+        else multiplier = 0.5;
 
+        station.revenueMultiplier = multiplier;
 
+        if (station.marker && station.marker.getPopup()) {
+          station.marker
+            .getPopup()
+            .setContent(
+              `<b>${station.name}</b><br>ID: ${station.id}<br>` +
+                `プラットフォーム長: ${station.platformLength.toFixed(
+                  1
+                )}m<br>` +
+                `人口密度: ${Math.round(density).toLocaleString()}人/km²<br>` +
+                `収益倍率: ${station.revenueMultiplier.toFixed(2)}`
+            );
+        }
+      }
+
+      // 人口密度カラー取得
+      function getDensityColor(density) {
+        if (density <= 0) return "rgba(0,0,0,0)";
+        let r, g, b, a;
+        if (density < 50) {
+          const ratio = density / 50;
+          r = 100 * ratio;
+          g = 150 * ratio;
+          b = 255;
+          a = 0.1 + 0.3 * ratio;
+        } else if (density < 500) {
+          const ratio = (density - 50) / 450;
+          r = 100 + 155 * ratio;
+          g = 150 * (1 - ratio);
+          b = 255 * (1 - ratio);
+          a = 0.4 + 0.2 * ratio;
+        } else if (density < 2000) {
+          const ratio = (density - 500) / 1500;
+          r = 255;
+          g = 100 * ratio;
+          b = 100 * ratio;
+          a = 0.6 + 0.2 * ratio;
+        } else {
+          const ratio = Math.min(1, (density - 2000) / 8000);
+          r = 255;
+          g = Math.floor(100 * (1 - ratio));
+          b = 100 + 155 * ratio;
+          a = 0.8 + 0.1 * ratio;
+        }
+        return `rgba(${Math.floor(r)},${Math.floor(g)},${Math.floor(b)},${a})`;
+      }
+
+      // Leaflet人口密度レイヤー
+      L.GridLayer.PopulationDensity = L.GridLayer.extend({
+        options: { tileSize: 256, opacity: 0.6, samplingResolution: 24 },
+        createTile: function (coords) {
+          const tile = L.DomUtil.create("canvas", "leaflet-tile");
+          tile.width = tile.height = this.options.tileSize;
+          const ctx = tile.getContext("2d");
+          if (!populationDensityData) return tile;
+
+          const step = this.options.samplingResolution;
+          for (let x = 0; x < this.options.tileSize; x += step) {
+            for (let y = 0; y < this.options.tileSize; y += step) {
+              const mapPixelX = coords.x * this.options.tileSize + x;
+              const mapPixelY = coords.y * this.options.tileSize + y;
+              const latlng = map.unproject([mapPixelX, mapPixelY], coords.z);
+              const density = getPopulationDensity(latlng);
+              if (density > 0) {
+                ctx.fillStyle = getDensityColor(density);
+                ctx.fillRect(x, y, step, step);
+              }
+            }
+          }
+          return tile;
+        },
+      });
+
+      L.gridLayer.populationDensity = function (options) {
+        return new L.GridLayer.PopulationDensity(options);
+      };
+
+      function addPopulationDensityLayer() {
+        if (populationDensityLayer) map.removeLayer(populationDensityLayer);
+        populationDensityLayer = L.gridLayer
+          .populationDensity({ opacity: 0.6 })
+          .addTo(map);
+        populationDensityLayer.setZIndex(1);
+      }
+
+      // --- GAME LOOP ---
+      setInterval(updateTrains, CONFIG.updateInterval);
+
+      // --- INITIAL LOAD ---
+      document.addEventListener("DOMContentLoaded", function () {
+        loadPopulationDensityTiff();
+      });
     </script>
   </body>
 </html>
