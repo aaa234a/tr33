@@ -1792,7 +1792,7 @@
               // newStation.revenueMultiplier = revenueMultiplier; // 既存の地名APIからの収益倍率設定ロジックは削除
 
               // 人口密度に基づいて収益倍率を設定
-              setStationRevenueMultiplier(newStation);
+              await setStationRevenueMultiplier(newStation);
 
               ui.showMessage(
                 resolvedName +
@@ -1810,7 +1810,7 @@
               console.error("地名APIの取得に失敗しました:", error);
               // 地名APIが失敗しても人口密度は設定する
               newStation.name = "無名駅 (" + stationCenter.lat.toFixed(4) + ")";
-              setStationRevenueMultiplier(newStation);
+              await setStationRevenueMultiplier(newStation);
               ui.showMessage(
                 "地名取得失敗: " +
                   newStation.name +
@@ -2908,7 +2908,7 @@
               }
             });
             // ロード時に人口密度に基づいて収益倍率を再設定
-            setStationRevenueMultiplier(newStation); // ロード時にも人口密度を適用
+            await setStationRevenueMultiplier(newStation); // ロード時にも人口密度を適用
           }
 
           // Rebuild lines
@@ -2996,8 +2996,12 @@
           ui.showMessage("人口密度データを読み込み中...", true);
           const tiff = await GeoTIFF.fromUrl(POPULATION_DENSITY_TIFF_PATH);
           const image = await tiff.getImage(); // 最初のイメージを取得
+let bbox = image.getBoundingBox();
+if (!Array.isArray(bbox)) {
+  bbox = [bbox.left, bbox.bottom, bbox.right, bbox.top]; // GeoTIFFのbboxを配列に変換
+}
+populationDensityGeoTransform = bbox;
 
-          populationDensityGeoTransform = image.getBoundingBox(); // [minX, minY, maxX, maxY]
           populationDensityWidth = image.getWidth();
           populationDensityHeight = image.getHeight();
 
@@ -3025,7 +3029,7 @@
 
           // 既存の駅があれば、人口密度に基づいて収益倍率を更新
           for (var i = 0; i < state.stations.length; i++) {
-            setStationRevenueMultiplier(state.stations[i]);
+            await setStationRevenueMultiplier(state.stations[i]);
           }
         } catch (error) {
           console.error("人口密度TIFFの読み込みに失敗しました:", error);
@@ -3064,8 +3068,8 @@ async function getPopulationDensity(latlng) {
        * 駅の収益倍率を人口密度に基づいて設定し、ポップアップを更新する。
        * @param {object} station - 駅オブジェクト。
        */
-      function setStationRevenueMultiplier(station) {
-        const density = getPopulationDensity(station.latlng);
+      async function setStationRevenueMultiplier(station) {
+        const density = await getPopulationDensity(station.latlng);
         let multiplier = 1.0;
 
         // 人口密度に応じた倍率の計算ロジック
