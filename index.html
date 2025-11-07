@@ -3049,10 +3049,10 @@ function setStationRevenueMultiplier(station) {
   const density = getPopulationDensity(station.latlng);
   let multiplier = 1.0;
 
-  if (density > 5000) multiplier = 2.5;
-  else if (density > 1000) multiplier = 2.0;
-  else if (density > 100) multiplier = 1.5;
-  else if (density > 10) multiplier = 1.0;
+  if (density > 10000) multiplier = 2.5;
+  else if (density > 5000) multiplier = 2.0;
+  else if (density > 1000) multiplier = 1.5;
+  else if (density > 500) multiplier = 1.0;
   else multiplier = 0.5;
 
   station.revenueMultiplier = multiplier;
