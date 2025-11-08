@@ -650,6 +650,10 @@
           },
         },
         revenuePerStationStop: 10000, // 駅に停車するたびに得られる基本収益
+        passengerCapacityPerCar: 50, // 1車両あたりの乗客容量
+        basePassengerGeneration: 100, // 駅で生成される乗客の基本量 (人口密度倍率適用前)
+        passengerRevenuePerPerson: 100, // 1人あたりの乗客収益
+
         // 列車種類を実在のものに修正
         trains: [
           {
@@ -874,24 +878,24 @@
 
           // 購入可能な列車リストの更新
           this.trainListDiv.innerHTML = "";
-          var i, train;
+          var i, trainConfig;
           for (i = 0; i < CONFIG.trains.length; i++) {
-            train = CONFIG.trains[i];
+            trainConfig = CONFIG.trains[i];
             var trainItem = document.createElement("div");
-            trainItem.className = self.trainItemClass(train.id, "buy");
-            trainItem.dataset.trainId = train.id;
+            trainItem.className = self.trainItemClass(trainConfig.id, "buy");
+            trainItem.dataset.trainId = trainConfig.id;
             trainItem.innerHTML =
               '<div class="train-item-color-box" style="background-color:' +
-              train.color +
+              trainConfig.color +
               ';"></div>' +
               '<div class="train-item-details">' +
               "<h4>" +
-              train.name +
+              trainConfig.name +
               "</h4>" +
               "<p>" +
-              train.cars +
+              trainConfig.cars +
               "両 - $" +
-              train.cost.toLocaleString() +
+              trainConfig.cost.toLocaleString() +
               "</p>" +
               "</div>";
 
@@ -923,7 +927,7 @@
           }
 
           for (i = 0; i < state.trains.length; i++) {
-            train = state.trains[i];
+            var train = state.trains[i];
             var trainItem = document.createElement("div");
             trainItem.className = self.trainItemClass(train.id, "assign");
             trainItem.dataset.trainId = train.id;
@@ -941,6 +945,12 @@
               "<p>" +
               (assignedLine ? "路線: " + assignedLine.name : "未割り当て") +
               "</p>" +
+              // 乗客数と最大容量を追加
+              "<p>乗客: " +
+              train.currentPassengers +
+              "/" +
+              train.maxCapacity +
+              "人</p>" +
               "</div>";
 
             trainItem.onclick = function () {
@@ -1533,7 +1543,7 @@
 
       /**
        * 建設モードを開始または終了する。
-       * @param {string} type - 建設タイプ ('ground', 'viaduct', 'tunnel', 'station')。
+       * @param {string} type - 建設タイプ ('ground', 'viaduct', 'tunnel', 'station').
        */
       function startPlanning(type) {
         if (state.planning.type === type) {
@@ -1823,7 +1833,7 @@
               "</b><br>ID: " +
               newStation.id +
               "<br>プラットフォーム長: " +
-              len.toFixed(1) +
+              newStation.platformLength.toFixed(1) +
               "m<br>収益倍率: " +
               newStation.revenueMultiplier.toFixed(2)
           );
@@ -1984,6 +1994,8 @@
           carLayers: [],
           currentLatLng: null,
           currentHeading: 0,
+          currentPassengers: 0, // 新規追加: 現在の乗客数
+          maxCapacity: trainToBuyConfig.cars * CONFIG.passengerCapacityPerCar, // 新規追加: 最大乗客容量
         };
         state.trains.push(newTrain);
 
@@ -1997,6 +2009,27 @@
       function selectTrainToAssign(trainId) {
         state.selectedTrainToAssignId = trainId;
         ui.renderTrainShop();
+      }
+
+      /**
+       * 指定された路線の総車両数と総列車数を更新する。
+       * 列車が路線に割り当てられたり、割り当てが解除されたりするたびに呼び出す。
+       * @param {string} lineId - 路線のID。
+       */
+      function updateLineTrainCounts(lineId) {
+        var line = getLineById(lineId);
+        if (!line) return;
+
+        line.totalTrainsOnLine = 0;
+        line.totalCarsOnLine = 0;
+
+        for (var i = 0; i < state.trains.length; i++) {
+          var train = state.trains[i];
+          if (train.currentLineId === lineId) {
+            line.totalTrainsOnLine++;
+            line.totalCarsOnLine += train.cars;
+          }
+        }
       }
 
       /** 選択された列車を路線に割り当てる。 */
@@ -2023,6 +2056,7 @@
           return;
         }
 
+        // 以前の路線から列車を外す
         if (train.currentLineId) {
           var oldLine = getLineById(train.currentLineId);
           if (oldLine && oldLine.assignedTrainIds) {
@@ -2031,6 +2065,7 @@
                 return id !== train.id;
               }
             );
+            updateLineTrainCounts(oldLine.id); // 以前の路線の列車数を更新
           }
         }
 
@@ -2041,6 +2076,7 @@
         train.isStopped = false;
         train.stopTimer = null;
         train.currentStationId = null;
+        train.currentPassengers = 0; // 路線割り当て時に乗客をリセット
 
         var firstSegment = line.segments[0];
         if (firstSegment && firstSegment.latlngs.length > 0) {
@@ -2059,6 +2095,8 @@
           line.assignedTrainIds = [];
         }
         line.assignedTrainIds.push(train.id);
+
+        updateLineTrainCounts(line.id); // 新しい路線の列車数を更新
 
         ui.showMessage(
           train.name + "を路線 " + line.name + "に割り当てました。",
@@ -2300,6 +2338,8 @@
           segments: lineSegmentsForTrainMovement,
           totalDistance: totalLineDistance,
           assignedTrainIds: [],
+          totalTrainsOnLine: 0, // 新規追加: 路線上の総列車数
+          totalCarsOnLine: 0, // 新規追加: 路線上の総車両数
         });
 
         ui.updateFinance();
@@ -2509,6 +2549,7 @@
               train.currentLatLng = null;
               train.isStopped = true;
               if (train.stopTimer) clearTimeout(train.stopTimer);
+              train.currentPassengers = 0; // 路線が削除されたら乗客もリセット
             }
           }
         }
@@ -2520,6 +2561,7 @@
           false,
           3000
         );
+        ui.renderTrainShop(); // 列車ショップも更新して、割り当て解除を反映
       }
 
       /** 解体モードをキャンセルする。 */
@@ -2545,7 +2587,7 @@
       // --- TRAIN MOVEMENT LOGIC: 列車移動の計算と更新 ---
       /** 全列車の位置と状態を更新する。 */
       function updateTrains() {
-        var deltaTime = CONFIG.updateInterval / 50;
+        var deltaTime = CONFIG.updateInterval / 1000; // 秒単位
         var i;
 
         for (i = 0; i < state.trains.length; i++) {
@@ -2579,10 +2621,20 @@
             continue;
           }
 
-          var speed_mps = (train.speed * 1000) / 3600;
+          var speed_mps = (train.speed * 1000) / 3600; // km/h を m/s に変換
           var distanceMoved = speed_mps * deltaTime;
           var segmentLength = currentSegment.distance;
           if (segmentLength === 0) {
+            // ゼロ除算対策
+            train.progress = train.direction === 1 ? 1.0 : 0;
+            handleArrival(
+              train,
+              line,
+              train.direction === 1
+                ? line.stationIds[train.currentSegmentIndex + 1]
+                : line.stationIds[train.currentSegmentIndex],
+              train.progress
+            );
             continue;
           }
 
@@ -2655,15 +2707,109 @@
           train.currentStationId = arrivedStationId;
           train.currentLatLng = arrivedStation.latlng;
 
+          // --- 乗客の降車処理 ---
+          var passengersToDisembark = Math.floor(
+            train.currentPassengers * (0.3 + Math.random() * 0.4)
+          ); // 30%～70%が降車
+          train.currentPassengers -= passengersToDisembark;
+          state.assets +=
+            passengersToDisembark * CONFIG.passengerRevenuePerPerson;
+          if (passengersToDisembark > 0) {
+            ui.showMessage(
+              passengersToDisembark +
+                "人の乗客が" +
+                arrivedStation.name +
+                "で降車しました。 +$" +
+                (
+                  passengersToDisembark * CONFIG.passengerRevenuePerPerson
+                ).toLocaleString(),
+              false,
+              2000
+            );
+          }
+
+          // --- 乗客の乗車処理 ---
+          var stationDemand =
+            CONFIG.basePassengerGeneration * arrivedStation.revenueMultiplier;
+          var passengersGeneratedForTrain = stationDemand;
+
+          // 路線の供給による乗客生成量の調整
+          if (
+            line.totalTrainsOnLine > 0 &&
+            line.totalCarsOnLine > 0 &&
+            line.totalDistance > 0
+          ) {
+            // 路線全体の需要を、路線の総列車数と総車両数で分担するロジック
+            // 路線全体の需要を、路線の総車両数で割って、1車両あたりの需要を出す
+            // その需要と、この列車の車両数を掛ける
+            var averageCarsPerTrain =
+              line.totalCarsOnLine / line.totalTrainsOnLine;
+            var trainShareFactor =
+              train.cars / Math.max(1, averageCarsPerTrain); // この列車が平均より車両が多いか少ないか (ゼロ除算対策)
+
+            // 路線の総距離と総列車数から「混雑度」を計算
+            // 距離が短いのに列車が多いと混雑、距離が長いのに列車が少ないとガラガラ
+            var trainsPerKm =
+              line.totalTrainsOnLine / (line.totalDistance / 1000); // kmあたりの列車数
+            var carsPerKm = line.totalCarsOnLine / (line.totalDistance / 1000); // kmあたりの車両数
+
+            var idealTrainsPerKm = 1 / 10; // 例: 10kmあたり1列車が理想
+            var idealCarsPerKm = 1 / 2; // 例: 2kmあたり1車両
+
+            // 列車が多すぎると1列車あたりの乗客が減るペナルティ
+            var trainDensityPenalty = Math.max(
+              0.1,
+              Math.min(1, idealTrainsPerKm / trainsPerKm)
+            );
+            // 車両が多すぎると1車両あたりの乗客が減るペナルティ
+            var carDensityPenalty = Math.max(
+              0.1,
+              Math.min(1, idealCarsPerKm / carsPerKm)
+            );
+
+            // 供給過多によるペナルティを平均化
+            var supplyPenaltyFactor =
+              (trainDensityPenalty + carDensityPenalty) / 2;
+
+            passengersGeneratedForTrain =
+              stationDemand * trainShareFactor * supplyPenaltyFactor;
+            passengersGeneratedForTrain = Math.max(
+              0,
+              passengersGeneratedForTrain
+            ); // マイナスにならないように
+          }
+
+          var availableCapacity = train.maxCapacity - train.currentPassengers;
+          var passengersToBoard = Math.min(
+            Math.floor(passengersGeneratedForTrain),
+            availableCapacity
+          );
+
+          train.currentPassengers += passengersToBoard;
+          state.assets += passengersToBoard * CONFIG.passengerRevenuePerPerson;
+          if (passengersToBoard > 0) {
+            ui.showMessage(
+              passengersToBoard +
+                "人の乗客が" +
+                arrivedStation.name +
+                "で乗車しました。 +$" +
+                (
+                  passengersToBoard * CONFIG.passengerRevenuePerPerson
+                ).toLocaleString(),
+              false,
+              2000
+            );
+          }
+
+          // 駅停車ボーナス (乗客収益とは別に)
           var revenue =
             CONFIG.revenuePerStationStop * arrivedStation.revenueMultiplier;
           state.assets += revenue;
-          ui.updateFinance();
           ui.showMessage(
             arrivedStation.name +
-              "に到着！$" +
+              "に到着！駅停車ボーナス +$" +
               Math.round(revenue).toLocaleString() +
-              "の収益。",
+              "。",
             false,
             2500
           );
@@ -2672,6 +2818,7 @@
             train.isStopped = false;
             train.currentStationId = null;
             moveToNextSegment();
+            ui.renderTrainShop(); // 乗客数表示を更新するため
           }, CONFIG.trainStopDuration);
         } else {
           if (arrivedStation) {
@@ -2679,13 +2826,14 @@
               train.name +
                 "は" +
                 arrivedStation.name +
-                "を通過します(プラットフォーム長不足)。",
+                "を通過します(プラットフォーム長不足または停車しない駅)。",
               false,
               3000
             );
           }
           moveToNextSegment();
         }
+        ui.updateFinance(); // 収益更新
       }
 
       // --- RENDER TRAINS: マップ上での列車の描画とアニメーション ---
@@ -2695,6 +2843,7 @@
         for (i = 0; i < state.trains.length; i++) {
           var train = state.trains[i];
 
+          // 既存の車両レイヤーをマップから削除
           if (train.carLayers) {
             for (j = 0; j < train.carLayers.length; j++) {
               map.removeLayer(train.carLayers[j]);
@@ -2712,11 +2861,12 @@
           var headDistanceInSegment = currentSegment.distance * train.progress;
 
           for (j = 0; j < train.cars; j++) {
+            // 各車両の中心が先頭からどれだけ離れているか
             var carCenterDistance =
               headDistanceInSegment - j * carLengthMeters - carLengthMeters / 2;
 
             var pointData;
-            // TODO: セグメントをまたぐ車両の描画は未対応。ひとまず現在のセグメント内に描画
+            // 現在のセグメント内で車両の位置を計算
             if (
               carCenterDistance >= 0 &&
               carCenterDistance <= currentSegment.distance
@@ -2726,10 +2876,16 @@
                 carCenterDistance
               );
             } else {
-              // セグメント外の車両は先頭車両と同じ位置に描画(仮)
+              // セグメント外の車両は、先頭車両の方向へ延長線上に配置 (簡易的な処理)
+              // 実際には前のセグメントや次のセグメントにまたがる場合があるが、ここでは簡略化
+              // この処理は、列車がセグメントの端にいるときに、後続車両がセグメント外に出るのを防ぐため
+              // 厳密には、getPointAtDistanceを路線の全パスに対して呼び出す必要があるが、パフォーマンスを考慮し簡略化
               pointData = getPointAtDistance(
                 currentSegment.latlngs,
-                headDistanceInSegment
+                Math.max(
+                  0,
+                  Math.min(currentSegment.distance, carCenterDistance)
+                )
               );
             }
 
@@ -2770,6 +2926,16 @@
             });
 
             var carMarker = L.marker(carLatLng, { icon: carIcon }).addTo(map);
+
+            // 先頭車両にのみポップアップを設定
+            if (j === 0) {
+              carMarker.bindPopup(
+                `<b>${train.name}</b><br>` +
+                  `路線: ${line.name}<br>` +
+                  `速度: ${train.speed}km/h<br>` +
+                  `乗客: ${train.currentPassengers}/${train.maxCapacity}人`
+              );
+            }
             train.carLayers.push(carMarker);
           }
         }
@@ -2827,6 +2993,8 @@
                   distance: seg.distance,
                 };
               }),
+              totalTrainsOnLine: l.totalTrainsOnLine, // 新規追加
+              totalCarsOnLine: l.totalCarsOnLine, // 新規追加
             };
           }),
           trains: state.trains.map(function (t) {
@@ -2845,6 +3013,8 @@
               direction: t.direction,
               progress: t.progress,
               isStopped: t.isStopped,
+              currentPassengers: t.currentPassengers, // 新規追加
+              maxCapacity: t.maxCapacity, // 新規追加
             };
           }),
           currentLineColorIndex: state.currentLineColorIndex,
@@ -3022,6 +3192,8 @@
                   distance: seg.distance,
                 };
               }),
+              totalTrainsOnLine: lData.totalTrainsOnLine || 0, // 新規追加
+              totalCarsOnLine: lData.totalCarsOnLine || 0, // 新規追加
             });
           }
 
@@ -3033,6 +3205,7 @@
             newTrain.carLayers = [];
             newTrain.currentLatLng = null; // will be calculated on next update
             newTrain.currentHeading = 0;
+            // currentPassengersとmaxCapacityはtrainDataから直接コピーされる
             state.trains.push(newTrain);
           }
 
@@ -3105,7 +3278,7 @@
           }
 
           // 必要ならレイヤーを追加
-          // addPopulationDensityLayer();
+          // addPopulationDensityLayer(); // 人口密度レイヤーの表示は任意
         } catch (error) {
           console.error("人口密度TIFFの読み込みに失敗しました:", error);
           ui.showMessage(
@@ -3245,6 +3418,7 @@
       // --- INITIAL LOAD ---
       document.addEventListener("DOMContentLoaded", function () {
         loadPopulationDensityTiff();
+        // addPopulationDensityLayer(); // 人口密度レイヤーを初期表示したい場合はコメント解除
       });
     </script>
   </body>
