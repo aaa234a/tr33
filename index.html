@@ -2587,7 +2587,7 @@
       // --- TRAIN MOVEMENT LOGIC: 列車移動の計算と更新 ---
       /** 全列車の位置と状態を更新する。 */
       function updateTrains() {
-        var deltaTime = CONFIG.updateInterval / 1000; // 秒単位
+        var deltaTime = CONFIG.updateInterval / 100; // 秒単位
         var i;
 
         for (i = 0; i < state.trains.length; i++) {
