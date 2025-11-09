@@ -560,15 +560,13 @@
         <button id="save-game-btn">ゲームをセーブ (ローカル)</button>
         <button id="load-game-btn">ゲームをロード (ローカル)</button>
         <hr />
-        <h3>セーブデータを共有</h3>
         <button id="export-save-btn">セーブデータを出力</button>
         <textarea
           id="save-data-textarea"
           rows="5"
-          placeholder="セーブデータJSONまたは共有URLをここに入力/表示"
+          placeholder="セーブデータJSONをここに入力/表示"
         ></textarea>
         <button id="import-save-btn">セーブデータを入力</button>
-        <button id="generate-share-url-btn">共有URLを生成</button>
       </div>
 
       <!-- ゲーム速度コントロールを追加 -->
@@ -949,9 +947,7 @@
         exportSaveButton: document.getElementById("export-save-btn"),
         importSaveButton: document.getElementById("import-save-btn"),
         saveDataTextarea: document.getElementById("save-data-textarea"),
-        generateShareUrlButton: document.getElementById(
-          "generate-share-url-btn"
-        ),
+        // generateShareUrlButton: document.getElementById("generate-share-url-btn"), // 削除
 
         /**
          * ユーザーにメッセージを表示する。
@@ -1237,7 +1233,7 @@
         },
       };
 
-      // --- INITIALIZE UI ---
+      // --- INITIAL LOAD ---
       ui.updateFinance();
       ui.renderTrainShop();
       ui.setLineBuildModeActive(false); // 初期は非表示
@@ -1645,10 +1641,10 @@
       ui.saveGameButton.onclick = saveGame;
       ui.loadGameButton.onclick = loadGame;
 
-      // 新しい共有機能のイベントリスナー
+      // セーブデータ出力/入力ボタン
       ui.exportSaveButton.onclick = exportSaveData;
       ui.importSaveButton.onclick = importSaveData;
-      ui.generateShareUrlButton.onclick = generateShareUrl;
+      // ui.generateShareUrlButton.onclick = generateShareUrl; // 削除
 
       // ゲーム速度ボタン
       var speedButtons = document.querySelectorAll(
@@ -2694,7 +2690,7 @@
                     map.removeLayer(train.carMarkers[j]);
                   }
                 }
-                train.carMarkers = []; // マーカー配列をクリア
+                train.carMarkers = []; // クリア
               }
               train.currentLatLng = null;
               train.isStopped = true;
@@ -3363,6 +3359,21 @@
         }
       }
 
+      // --- 暗号化/復号化のヘルパー関数 ---
+      // 注意: このXOR暗号化は非常に簡易的なものであり、セキュリティレベルは高くありません。
+      // 鍵がコード内にハードコードされているため、本格的なセキュリティが必要な場合は、
+      // より強力な暗号化ライブラリの導入と、鍵管理の仕組みが必要です。
+      var encryptionKey = "RailBuilderSecretKey2023"; // 適当な鍵
+
+      function xorEncryptDecrypt(data, key) {
+          var output = "";
+          for (var i = 0; i < data.length; i++) {
+              var charCode = data.charCodeAt(i) ^ key.charCodeAt(i % key.length);
+              output += String.fromCharCode(charCode);
+          }
+          return output;
+      }
+
       /**
        * ロードされたデータオブジェクトからゲーム状態を復元する。
        * @param {object} loadedState - ロードするゲーム状態オブジェクト。
@@ -3538,9 +3549,13 @@
       function saveGame() {
         var savableState = getSavableState();
         try {
+          var jsonString = JSON.stringify(savableState);
+          var encrypted = xorEncryptDecrypt(jsonString, encryptionKey); // 暗号化
+          var compressedAndEncrypted = LZString.compressToBase64(encrypted); // 圧縮
+
           localStorage.setItem(
             "railBuilderSaveGame",
-            JSON.stringify(savableState)
+            compressedAndEncrypted
           );
           ui.showMessage("ゲームをセーブしました！ (ローカル)", false, 2000);
         } catch (e) {
@@ -3557,13 +3572,19 @@
           return;
         }
         try {
-          var loadedState = JSON.parse(savedData);
+          var decompressed = LZString.decompressFromBase64(savedData); // 解凍
+          if (!decompressed) {
+              throw new Error("LZ-String decompression failed.");
+          }
+          var decrypted = xorEncryptDecrypt(decompressed, encryptionKey); // 復号化
+          var loadedState = JSON.parse(decrypted);
+
           if (loadGameFromObject(loadedState)) {
             ui.showMessage("ゲームをロードしました！ (ローカル)", false, 2000);
           }
         } catch (e) {
           console.error("ゲームのロードに失敗しました:", e);
-          ui.showMessage("ゲームのロードに失敗しました。", false, 5000);
+          ui.showMessage("ゲームのロードに失敗しました。データが破損している可能性があります。", false, 5000);
         }
       }
 
@@ -3572,7 +3593,10 @@
         try {
           var savableState = getSavableState();
           var jsonString = JSON.stringify(savableState);
-          ui.saveDataTextarea.value = jsonString;
+          var encrypted = xorEncryptDecrypt(jsonString, encryptionKey); // 暗号化
+          var compressedAndEncrypted = LZString.compressToBase64(encrypted); // 圧縮
+          
+          ui.saveDataTextarea.value = compressedAndEncrypted;
           ui.showMessage("セーブデータを出力しました。テキストエリアからコピーしてください。", false, 3000);
         } catch (e) {
           console.error("セーブデータのエクスポートに失敗しました:", e);
@@ -3582,64 +3606,28 @@
 
       /** テキストエリアのJSONテキストからゲーム状態をインポートする。 */
       function importSaveData() {
-        var jsonString = ui.saveDataTextarea.value;
-        if (!jsonString) {
+        var compressedAndEncrypted = ui.saveDataTextarea.value;
+        if (!compressedAndEncrypted) {
           ui.showMessage("テキストエリアにセーブデータを貼り付けてください。", false, 3000);
           return;
         }
         try {
-          var loadedState = JSON.parse(jsonString);
+          var decompressed = LZString.decompressFromBase64(compressedAndEncrypted); // 解凍
+          if (!decompressed) {
+              throw new Error("LZ-String decompression failed.");
+          }
+          var decrypted = xorEncryptDecrypt(decompressed, encryptionKey); // 復号化
+          var loadedState = JSON.parse(decrypted);
+
           if (loadGameFromObject(loadedState)) {
             ui.showMessage("セーブデータを入力し、ゲームをロードしました！", false, 2000);
             ui.saveDataTextarea.value = ""; // ロード後クリア
           }
         } catch (e) {
           console.error("セーブデータのインポートに失敗しました:", e);
-          ui.showMessage("無効なセーブデータです。JSON形式を確認してください。", false, 5000);
+          ui.showMessage("無効なセーブデータです。形式を確認してください。", false, 5000);
         }
       }
-
-      /** 現在のゲーム状態を圧縮し、URLパラメータとして含んだ共有URLを生成する。 */
-      function generateShareUrl() {
-        try {
-          var savableState = getSavableState();
-          var jsonString = JSON.stringify(savableState);
-          var compressed = LZString.compressToBase64(jsonString); // LZ-Stringで圧縮
-          var shareUrl = window.location.origin + window.location.pathname + "?saveData=" + encodeURIComponent(compressed);
-          ui.saveDataTextarea.value = shareUrl;
-          ui.showMessage("共有URLを生成しました。テキストエリアからコピーして共有してください。", false, 5000);
-        } catch (e) {
-          console.error("共有URLの生成に失敗しました:", e);
-          ui.showMessage("共有URLの生成に失敗しました。", false, 3000);
-        }
-      }
-
-      /** URLパラメータからゲームをロードする。 */
-      function loadGameFromUrlParam() {
-          var params = new URLSearchParams(window.location.search);
-          var saveDataParam = params.get("saveData");
-          if (saveDataParam) {
-              try {
-                  var decompressed = LZString.decompressFromBase64(saveDataParam); // LZ-Stringで解凍
-                  if (decompressed) {
-                      var loadedState = JSON.parse(decompressed);
-                      if (loadGameFromObject(loadedState)) {
-                          ui.showMessage("共有URLからゲームをロードしました！", false, 3000);
-                          // URLからロード後、URLパラメータをクリアする（リロード時に再度ロードされるのを防ぐため）
-                          history.replaceState({}, document.title, window.location.pathname);
-                          return true;
-                      }
-                  } else {
-                      ui.showMessage("共有URLのデータが破損しているか、無効です。", false, 5000);
-                  }
-              } catch (e) {
-                  console.error("URLからのゲームロードに失敗しました:", e);
-                  ui.showMessage("共有URLからのゲームロードに失敗しました。", false, 5000);
-              }
-          }
-          return false;
-      }
-
 
       // ===================================================================
       // 人口密度TIFF関連の機能追加
@@ -3864,17 +3852,8 @@
           loadPopulationDensityTiff();
           setGameSpeed(1); // 初期速度は1倍
 
-          // URLパラメータにセーブデータがあるかチェック
-          var params = new URLSearchParams(window.location.search);
-          var saveDataParam = params.get("saveData");
-
-          if (saveDataParam) {
-              // URLからロードを試みる
-              loadGameFromUrlParam();
-          } else {
-              // URLパラメータがない場合、localStorageからのロードを試みる
-              loadGame();
-          }
+          // URLパラメータからのロードは削除されたため、常にlocalStorageからのロードを試みる
+          loadGame();
       });
     </script>
   </body>
