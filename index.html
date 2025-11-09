@@ -718,6 +718,8 @@
         passengerRevenuePerPerson: 100, // 1人あたりの乗客収益（降車時）
         passengerGenerationInterval: 10000, // 乗客を生成する間隔 (ms)
         passengerMaxDestinationAttempts: 5, // 乗客の目的地を決定する際の試行回数
+        maxWaitingPassengersPerMeterOfPlatform: 10, // 新規追加: プラットフォーム1mあたりの最大待機乗客数
+        optimalCarsPerLineSegment: 10, // 新規追加: 1路線セグメントあたりの最適な車両数（乗客生成の供給係数調整用）
 
         // 列車種類を実在のものに修正
         trains: [
@@ -1885,6 +1887,7 @@
             marker: marker,
             revenueMultiplier: 1.0, // 初期値は1.0、後で人口密度で更新
             passengersWaiting: [], // 新規追加: 駅で待機中の乗客リスト
+            maxWaitingPassengers: Math.floor(len * CONFIG.maxWaitingPassengersPerMeterOfPlatform), // 新規追加
           };
           state.stations.push(newStation);
 
@@ -1918,6 +1921,9 @@
               newStation.revenueMultiplier.toFixed(2) +
               "<br>待機乗客: " +
               newStation.passengersWaiting.length +
+              "人" +
+              "<br>最大待機乗客: " +
+              newStation.maxWaitingPassengers +
               "人"
           );
 
@@ -2963,17 +2969,24 @@
           }
 
           // 供給量に応じた乗客生成ボーナス/ペナルティ
-          // 例: 路線上の車両数が多いほど、その駅で生成される乗客も増えるが、
-          // あまりに多すぎると飽和して効率が落ちるような曲線
+          // 輸送能力が過剰になると、供給係数の増加が鈍化、あるいは頭打ちになるように調整
           var supplyFactor = 1.0;
           if (totalLineCarsAtStation > 0) {
-            // 100車両あたり1.5倍、200車両あたり2.0倍、など
-            supplyFactor = 1 + Math.log(totalLineCarsAtStation / 50 + 1) * 0.5;
-            supplyFactor = Math.min(supplyFactor, 3.0); // 最大3倍程度に制限
+            var optimalTotalCars = linesServingStation.length * CONFIG.optimalCarsPerLineSegment;
+            if (optimalTotalCars === 0) optimalTotalCars = CONFIG.optimalCarsPerLineSegment; // 路線がない場合のゼロ除算対策
+
+            // 対数関数で増加を鈍化させ、最大値を設定
+            supplyFactor = 1 + Math.log(1 + totalLineCarsAtStation / optimalTotalCars) * 0.8;
+            supplyFactor = Math.min(supplyFactor, 2.5); // 最大2.5倍に制限
           }
 
           var actualCount = Math.floor(baseCount * supplyFactor);
+
+          // 駅の最大待機乗客数を超えないように生成量を制限
+          var availableSlots = station.maxWaitingPassengers - station.passengersWaiting.length;
+          actualCount = Math.min(actualCount, availableSlots);
           actualCount = Math.max(0, actualCount); // マイナスにならないように
+
 
           for (var k = 0; k < actualCount; k++) {
             var destinationStation = null;
@@ -3229,6 +3242,7 @@
               platformLength: s.platformLength,
               revenueMultiplier: s.revenueMultiplier,
               passengersWaiting: s.passengersWaiting, // 新規追加
+              maxWaitingPassengers: s.maxWaitingPassengers, // 新規追加
             };
           }),
           lines: state.lines.map(function (l) {
@@ -3403,6 +3417,7 @@
               marker: marker,
               revenueMultiplier: sData.revenueMultiplier || 1.0,
               passengersWaiting: sData.passengersWaiting || [], // 新規追加
+              maxWaitingPassengers: sData.maxWaitingPassengers || Math.floor(sData.platformLength * CONFIG.maxWaitingPassengersPerMeterOfPlatform), // 新規追加
             };
             state.stations.push(newStation);
             marker.on("click", function (e) {
@@ -3452,7 +3467,7 @@
               stationIds: lData.stationIds,
               color: lData.color,
               layer: lineLayer,
-              totalDistance: l.totalDistance, // lData.totalDistanceに修正
+              totalDistance: lData.totalDistance, // lData.totalDistanceに修正
               assignedTrainIds: lData.assignedTrainIds,
               segments: lData.segments.map(function (seg) {
                 return {
@@ -3631,7 +3646,8 @@
                 )}m<br>` +
                 `人口密度: ${Math.round(density).toLocaleString()}人/km²<br>` +
                 `収益倍率: ${station.revenueMultiplier.toFixed(2)}<br>` +
-                `待機乗客: ${station.passengersWaiting.length}人`
+                `待機乗客: ${station.passengersWaiting.length}人<br>` +
+                `最大待機乗客: ${station.maxWaitingPassengers}人`
             );
         }
       }
