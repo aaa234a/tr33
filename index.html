@@ -652,6 +652,46 @@
       }
 
       // ===================================================================
+      // Custom RotatedMarker: 列車車両の回転を可能にするLeafletマーカー
+      // ===================================================================
+      L.RotatedMarker = L.Marker.extend({
+        options: {
+          rotation: 0 // in degrees
+        },
+
+        onAdd: function (map) {
+          L.Marker.prototype.onAdd.call(this, map);
+          this.updateRotation();
+        },
+
+        updateRotation: function () {
+          if (this._icon) {
+            this._icon.style[L.DomUtil.TRANSFORM + 'Origin'] = 'center center';
+            // 既存のtransformプロパティがあればそれを維持し、rotateだけを上書き
+            var currentTransform = this._icon.style[L.DomUtil.TRANSFORM];
+            var newTransform = currentTransform.replace(/rotate\([^)]*\)/g, '').trim() + ' rotate(' + this.options.rotation + 'deg)';
+            this._icon.style[L.DomUtil.TRANSFORM] = newTransform;
+          }
+        },
+
+        setRotation: function (rotation) {
+          this.options.rotation = rotation;
+          this.updateRotation();
+          return this;
+        },
+
+        _setPos: function (pos) {
+          L.Marker.prototype._setPos.call(this, pos);
+          this.updateRotation(); // 位置が更新されたら回転も再適用
+        }
+      });
+
+      L.rotatedMarker = function (latlng, options) {
+        return new L.RotatedMarker(latlng, options);
+      };
+
+
+      // ===================================================================
       // CONFIG: ゲームの設定値 (const -> var)
       // ===================================================================
       var CONFIG = {
@@ -809,7 +849,7 @@
         trains: [], // 購入済み列車オブジェクトの配列
         planning: {
           // 線路・駅建設モードの状態
-          type: null, // 'ground', 'viaduct', 'tunnel', 'station'
+          type: null, // 'ground', 'viaduct', 'tunnel'
           points: [], // 建設中の点の配列 (LatLng)
           ghost: null, // 建設中の仮ポリライン/マーカー (Leaflet Layer)
         },
@@ -2034,7 +2074,7 @@
           progress: 0,
           isStopped: false,
           stopTimer: null,
-          carLayers: [],
+          carMarkers: [], // 変更: carLayersからcarMarkersへ
           currentLatLng: null,
           currentHeading: 0,
           currentPassengers: [], // 変更: 乗客オブジェクトの配列
@@ -2110,6 +2150,15 @@
             );
             updateLineTrainCounts(oldLine.id); // 以前の路線の列車数を更新
           }
+          // 列車が路線から外れる際に、マップ上のマーカーを削除
+          if (train.carMarkers) {
+            for (var k = 0; k < train.carMarkers.length; k++) {
+              if (train.carMarkers[k] && map.hasLayer(train.carMarkers[k])) {
+                map.removeLayer(train.carMarkers[k]);
+              }
+            }
+          }
+          train.carMarkers = []; // マーカー配列をクリア
         }
 
         train.currentLineId = line.id;
@@ -2148,7 +2197,7 @@
         );
         state.selectedTrainToAssignId = null;
         ui.renderTrainShop();
-        renderTrains();
+        renderTrains(); // 列車が割り当てられたらレンダリングを更新
       }
 
       // --- LINE BUILDING LOGIC: 路線設定の機能 ---
@@ -2590,16 +2639,19 @@
             });
             if (train) {
               train.currentLineId = null;
-              if (train.carLayers) {
-                for (j = 0; j < train.carLayers.length; j++) {
-                  map.removeLayer(train.carLayers[j]);
+              // 既存の carLayers を削除する代わりに carMarkers を削除
+              if (train.carMarkers) {
+                for (j = 0; j < train.carMarkers.length; j++) {
+                  if (train.carMarkers[j] && map.hasLayer(train.carMarkers[j])) {
+                    map.removeLayer(train.carMarkers[j]);
+                  }
                 }
-                train.carLayers = [];
+                train.carMarkers = []; // マーカー配列をクリア
               }
               train.currentLatLng = null;
               train.isStopped = true;
               if (train.stopTimer) clearTimeout(train.stopTimer);
-              train.currentPassengers = []; // 路線が削除されたら乗客もリセット
+              train.currentPassengers = [];
             }
           }
         }
@@ -2725,7 +2777,7 @@
        */
       function handleArrival(train, line, arrivedStationId, progressAtArrival) {
         train.progress = progressAtArrival;
-        var arrivedStation = getStationById(arrivedStationId);
+        var station = getStationById(arrivedStationId); // station変数名に変更
 
         function moveToNextSegment() {
           if (train.direction === 1) {
@@ -2750,12 +2802,12 @@
         }
 
         if (
-          arrivedStation &&
-          arrivedStation.platformLength >= train.totalLength
+          station && // station変数名に変更
+          station.platformLength >= train.totalLength
         ) {
           train.isStopped = true;
           train.currentStationId = arrivedStationId;
-          train.currentLatLng = arrivedStation.latlng;
+          train.currentLatLng = station.latlng; // station変数名に変更
 
           // --- 乗客の降車処理 ---
           var passengersDisembarked = 0;
@@ -2765,7 +2817,7 @@
             if (passenger.destinationStationId === arrivedStationId) {
               // 変更点: 駅のrevenueMultiplierを乗算
               state.assets +=
-                CONFIG.passengerRevenuePerPerson * arrivedStation.revenueMultiplier;
+                CONFIG.passengerRevenuePerPerson * station.revenueMultiplier; // station変数名に変更
               passengersDisembarked++;
             } else {
               remainingPassengers.push(passenger);
@@ -2776,12 +2828,12 @@
             ui.showMessage(
               passengersDisembarked +
                 "人の乗客が" +
-                arrivedStation.name +
+                station.name + // station変数名に変更
                 "で降車し、$" +
                 (
                   passengersDisembarked *
                   CONFIG.passengerRevenuePerPerson *
-                  arrivedStation.revenueMultiplier
+                  station.revenueMultiplier // station変数名に変更
                 ).toLocaleString() + // ここも表示に合わせて変更
                 "の収益を得ました。",
               false,
@@ -2789,15 +2841,13 @@
             );
           }
 
-          // --- 乗客の乗車処理 ---
-          var availableCapacity =
-            train.maxCapacity - train.currentPassengers.length;
-          var passengersBoarded = 0;
+          // --- 乗客の乗車処理 (最適化) ---
+          var availableCapacity = train.maxCapacity - train.currentPassengers.length;
+          var passengersBoardedCount = 0;
           var passengersToBoard = [];
-          var remainingStationPassengers = [];
-
-          // 駅の待機乗客を、この路線の次の駅を目的地とする乗客から優先して乗せる
+          var currentLineStationIds = line.stationIds;
           var nextStationId = null;
+
           if (
             train.direction === 1 &&
             train.currentSegmentIndex < line.stationIds.length - 1
@@ -2807,81 +2857,55 @@
             nextStationId = line.stationIds[train.currentSegmentIndex - 1];
           }
 
-          // 1. 次の停車駅を目的地とする乗客を優先
-          var i;
-          for (i = 0; i < arrivedStation.passengersWaiting.length; i++) {
-            var p = arrivedStation.passengersWaiting[i];
-            if (
-              passengersBoarded < availableCapacity &&
-              p.destinationStationId === nextStationId
-            ) {
-              passengersToBoard.push(p);
-              passengersBoarded++;
-            } else {
-              remainingStationPassengers.push(p);
-            }
-          }
+          var tempPassengersWaiting = []; // 駅に残る乗客を一時的に保持する配列
 
-          // 2. この路線の他の駅を目的地とする乗客
-          var currentLineStationIds = line.stationIds;
-          for (i = 0; i < remainingStationPassengers.length; i++) {
-            var p = remainingStationPassengers[i];
-            if (
-              passengersBoarded < availableCapacity &&
-              currentLineStationIds.includes(p.destinationStationId)
-            ) {
+          // 1. 次の停車駅を目的地とする乗客を優先的に乗せる
+          for (var i = 0; i < station.passengersWaiting.length; i++) {
+            var p = station.passengersWaiting[i];
+            if (passengersBoardedCount < availableCapacity && p.destinationStationId === nextStationId) {
               passengersToBoard.push(p);
-              passengersBoarded++;
+              passengersBoardedCount++;
             } else {
-              remainingStationPassengers.push(p); // 再度追加して、次のループで処理
+              tempPassengersWaiting.push(p);
             }
           }
-          // 重複を避けるため、一度クリアして再構築
-          var tempRemaining = [];
-          for (i = 0; i < remainingStationPassengers.length; i++) {
-            var p = remainingStationPassengers[i];
-            var alreadyBoarded = passengersToBoard.find(function (bp) {
-              return bp.id === p.id;
-            });
-            if (
-              !alreadyBoarded &&
-              !currentLineStationIds.includes(p.destinationStationId)
-            ) {
-              tempRemaining.push(p);
-            }
-          }
-          remainingStationPassengers = tempRemaining;
+          station.passengersWaiting = tempPassengersWaiting; // 処理済みの乗客を削除し、残りを更新
 
-          // 3. その他の駅を目的地とする乗客 (路線の駅ではないが、どこかの駅へ向かう乗客)
-          for (i = 0; i < remainingStationPassengers.length; i++) {
-            var p = remainingStationPassengers[i];
-            if (passengersBoarded < availableCapacity) {
+          tempPassengersWaiting = []; // リセット
+
+          // 2. この路線の他の駅を目的地とする乗客を乗せる
+          for (var i = 0; i < station.passengersWaiting.length; i++) {
+            var p = station.passengersWaiting[i];
+            if (passengersBoardedCount < availableCapacity && currentLineStationIds.includes(p.destinationStationId)) {
               passengersToBoard.push(p);
-              passengersBoarded++;
+              passengersBoardedCount++;
             } else {
-              remainingStationPassengers.push(p);
+              tempPassengersWaiting.push(p);
             }
           }
-          // 重複を避けるため、一度クリアして再構築
-          tempRemaining = [];
-          for (i = 0; i < remainingStationPassengers.length; i++) {
-            var p = remainingStationPassengers[i];
-            var alreadyBoarded = passengersToBoard.find(function (bp) {
-              return bp.id === p.id;
-            });
-            if (!alreadyBoarded) {
-              tempRemaining.push(p);
+          station.passengersWaiting = tempPassengersWaiting; // 処理済みの乗客を削除し、残りを更新
+
+          tempPassengersWaiting = []; // リセット
+
+          // 3. 最後に、その他の駅を目的地とする乗客を乗せる（この路線上ではないが、どこかの駅へ向かう乗客）
+          for (var i = 0; i < station.passengersWaiting.length; i++) {
+            var p = station.passengersWaiting[i];
+            if (passengersBoardedCount < availableCapacity) {
+              passengersToBoard.push(p);
+              passengersBoardedCount++;
+            } else {
+              tempPassengersWaiting.push(p);
             }
           }
-          arrivedStation.passengersWaiting = tempRemaining; // 最終的に残った乗客を駅に戻す
+          station.passengersWaiting = tempPassengersWaiting; // 最終的に駅に残る乗客
 
           Array.prototype.push.apply(train.currentPassengers, passengersToBoard);
 
-          if (passengersBoarded > 0) {
+          if (passengersBoardedCount > 0) {
             ui.showMessage(
-              passengersBoarded +
+              passengersBoardedCount +
                 "人の乗客が" +
-                arrivedStation.name +
+                station.name +
                 "で乗車しました。",
               false,
               2000
@@ -2893,14 +2917,14 @@
             train.currentStationId = null;
             moveToNextSegment();
             ui.renderTrainShop(); // 乗客数表示を更新するため
-            setStationRevenueMultiplier(arrivedStation); // 駅の待機乗客数も更新されるためポップアップを更新
+            setStationRevenueMultiplier(station); // 駅の待機乗客数も更新されるためポップアップを更新
           }, CONFIG.trainStopDuration / state.gameSpeedMultiplier); // 倍速適用
         } else {
-          if (arrivedStation) {
+          if (station) { // station変数名に変更
             ui.showMessage(
               train.name +
                 "は" +
-                arrivedStation.name +
+                station.name + // station変数名に変更
                 "を通過します(プラットフォーム長不足または停車しない駅)。",
               false,
               3000
@@ -3026,15 +3050,18 @@
         for (i = 0; i < state.trains.length; i++) {
           var train = state.trains[i];
 
-          // 既存の車両レイヤーをマップから削除
-          if (train.carLayers) {
-            for (j = 0; j < train.carLayers.length; j++) {
-              map.removeLayer(train.carLayers[j]);
+          if (!train.currentLineId || !train.currentLatLng) {
+            // 列車が路線に割り当てられていない、または位置情報がない場合は、既存のマーカーを削除
+            if (train.carMarkers) {
+              for (j = 0; j < train.carMarkers.length; j++) {
+                if (train.carMarkers[j] && map.hasLayer(train.carMarkers[j])) {
+                  map.removeLayer(train.carMarkers[j]);
+                }
+              }
             }
+            train.carMarkers = []; // クリア
+            continue;
           }
-          train.carLayers = [];
-
-          if (!train.currentLineId || !train.currentLatLng) continue;
 
           var line = getLineById(train.currentLineId);
           if (!line) continue;
@@ -3042,6 +3069,19 @@
           var carLengthMeters = CONFIG.trainCarDimensionsMeters.length;
           var currentSegment = line.segments[train.currentSegmentIndex];
           var headDistanceInSegment = currentSegment.distance * train.progress;
+
+          // carMarkers配列のサイズ調整
+          // 既存のマーカー数が車両数と異なる場合は、すべて削除して再作成
+          if (!train.carMarkers || train.carMarkers.length !== train.cars) {
+            if (train.carMarkers) {
+              for (j = 0; j < train.carMarkers.length; j++) {
+                if (train.carMarkers[j] && map.hasLayer(train.carMarkers[j])) {
+                  map.removeLayer(train.carMarkers[j]);
+                }
+              }
+            }
+            train.carMarkers = new Array(train.cars);
+          }
 
           for (j = 0; j < train.cars; j++) {
             // 各車両の中心が先頭からどれだけ離れているか
@@ -3060,9 +3100,6 @@
               );
             } else {
               // セグメント外の車両は、先頭車両の方向へ延長線上に配置 (簡易的な処理)
-              // 実際には前のセグメントや次のセグメントにまたがる場合があるが、ここでは簡略化
-              // この処理は、列車がセグメントの端にいるときに、後続車両がセグメント外に出るのを防ぐため
-              // 厳密には、getPointAtDistanceを路線の全パスに対して呼び出す必要があるが、パフォーマンスを考慮し簡略化
               pointData = getPointAtDistance(
                 currentSegment.latlngs,
                 Math.max(
@@ -3092,34 +3129,66 @@
             var iconSize = [maxDim, maxDim];
             var rotation = carHeading - 90;
 
-            var carIcon = L.divIcon({
-              className: "train-car-container",
-              html:
-                '<div class="train-car-body" style="background-color:' +
-                train.color +
-                "; width:" +
-                carLengthPx +
-                "px; height:" +
-                carWidthPx +
-                "px; transform: rotate(" +
-                rotation +
-                'deg);"></div>',
-              iconSize: iconSize,
-              iconAnchor: [maxDim / 2, maxDim / 2],
-            });
+            if (!train.carMarkers[j]) {
+              // 初回作成
+              var carIcon = L.divIcon({
+                className: "train-car-container",
+                html:
+                  '<div class="train-car-body" style="background-color:' +
+                  train.color +
+                  '; width:' +
+                  carLengthPx +
+                  "px; height:" +
+                  carWidthPx +
+                  'px;"></div>',
+                iconSize: iconSize,
+                iconAnchor: [maxDim / 2, maxDim / 2],
+              });
+              train.carMarkers[j] = L.rotatedMarker(carLatLng, { icon: carIcon, rotation: rotation }).addTo(map);
+            } else {
+              // 更新
+              train.carMarkers[j].setLatLng(carLatLng);
+              train.carMarkers[j].setRotation(rotation);
 
-            var carMarker = L.marker(carLatLng, { icon: carIcon }).addTo(map);
+              // アイコンサイズと車両サイズを動的に更新
+              var iconElement = train.carMarkers[j].getElement();
+              if (iconElement) {
+                var bodyElement = iconElement.querySelector('.train-car-body');
+                if (bodyElement) {
+                  bodyElement.style.width = carLengthPx + 'px';
+                  bodyElement.style.height = carWidthPx + 'px';
+                }
+                // L.divIconのiconSizeは直接変更できないため、新しいアイコンをセットし直す
+                // ただし、これはコストが高いので、アイコンサイズが大きく変動しない場合は省略可能
+                // 今回は車両サイズが動的に変わるため、正確性を優先して再設定
+                train.carMarkers[j].setIcon(L.divIcon({
+                    className: "train-car-container",
+                    html:
+                      '<div class="train-car-body" style="background-color:' +
+                      train.color +
+                      '; width:' +
+                      carLengthPx +
+                      "px; height:" +
+                      carWidthPx +
+                      'px;"></div>',
+                    iconSize: iconSize,
+                    iconAnchor: [maxDim / 2, maxDim / 2],
+                }));
+            }
+            }
 
-            // 先頭車両にのみポップアップを設定
+            // 先頭車両にのみポップアップを設定/更新
             if (j === 0) {
-              carMarker.bindPopup(
-                `<b>${train.name}</b><br>` +
+              var popupContent = `<b>${train.name}</b><br>` +
                   `路線: ${line.name}<br>` +
                   `速度: ${train.speed}km/h<br>` +
-                  `乗客: ${train.currentPassengers.length}/${train.maxCapacity}人`
-              );
+                  `乗客: ${train.currentPassengers.length}/${train.maxCapacity}人`;
+              if (!train.carMarkers[j].getPopup()) {
+                  train.carMarkers[j].bindPopup(popupContent);
+              } else {
+                  train.carMarkers[j].getPopup().setContent(popupContent);
+              }
             }
-            train.carLayers.push(carMarker);
           }
         }
       }
@@ -3230,6 +3299,18 @@
             map.removeLayer(layer);
           }
         });
+        // train.carMarkersも明示的にクリア
+        for (var i = 0; i < state.trains.length; i++) {
+            var train = state.trains[i];
+            if (train.carMarkers) {
+                for (var j = 0; j < train.carMarkers.length; j++) {
+                    if (train.carMarkers[j] && map.hasLayer(train.carMarkers[j])) {
+                        map.removeLayer(train.carMarkers[j]);
+                    }
+                }
+            }
+            train.carMarkers = []; // クリア
+        }
       }
 
       /** ゲームの状態をロードする */
@@ -3370,10 +3451,9 @@
               stationIds: lData.stationIds,
               color: lData.color,
               layer: lineLayer,
-              totalDistance: lData.totalDistance,
+              totalDistance: l.totalDistance, // lData.totalDistanceに修正
               assignedTrainIds: lData.assignedTrainIds,
               segments: lData.segments.map(function (seg) {
-                // Corrected from 'l.segments' to 'lData.segments'
                 return {
                   startStationId: seg.startStationId,
                   endStationId: seg.endStationId,
@@ -3391,10 +3471,9 @@
             var trainData = loadedState.trains[i];
             var newTrain = Object.assign({}, trainData);
             newTrain.stopTimer = null;
-            newTrain.carLayers = [];
+            newTrain.carMarkers = []; // ロード時には空にして、renderTrainsで再作成させる
             newTrain.currentLatLng = null; // will be calculated on next update
             newTrain.currentHeading = 0;
-            // currentPassengersとmaxCapacityはtrainDataから直接コピーされる
             state.trains.push(newTrain);
           }
 
@@ -3441,6 +3520,10 @@
           const raster = await image.readRasters();
           populationDensityData = raster[0]; // raster[0] はすでに型付き配列
 
+          console.log("TIFF Width:", populationDensityWidth);
+          console.log("TIFF Height:", populationDensityHeight);
+          console.log("Raster data length:", populationDensityData ? populationDensityData.length : "null"); // ここで長さを確認
+
           ui.showMessage(
             "人口密度データの読み込みが完了しました。",
             false,
@@ -3467,7 +3550,7 @@
           ui.showMessage(
             "人口密度データの読み込みに失敗しました。ファイルパスを確認してください。",
             false,
-7000
+            7000
           );
         }
       }
@@ -3475,28 +3558,53 @@
       // 緯度経度 → ラスタ座標
       function latLngToPixel(latlng) {
         const [minX, minY, maxX, maxY] = populationDensityGeoTransform;
-        const x = Math.floor(
-          ((latlng.lng - minX) / (maxX - minX)) * populationDensityWidth
-        );
-        const y = Math.floor(
-          ((maxY - latlng.lat) / (maxY - minY)) * populationDensityHeight
-        );
-        return [x, y];
+        // 経度方向の範囲が0の場合の対策
+        const lngRange = maxX - minX;
+        const latRange = maxY - minY;
+
+        let x = 0;
+        if (lngRange !== 0) {
+            x = ((latlng.lng - minX) / lngRange) * populationDensityWidth;
+        }
+        let y = 0;
+        if (latRange !== 0) {
+            y = ((maxY - latlng.lat) / latRange) * populationDensityHeight;
+        }
+        
+        return [Math.floor(x), Math.floor(y)];
       }
 
       // 人口密度を取得（キャッシュ配列から同期で取得）
       function getPopulationDensity(latlng) {
-        if (!populationDensityData || populationDensityWidth === 0 || populationDensityHeight === 0) return 0;
+        if (!populationDensityData || populationDensityWidth === 0 || populationDensityHeight === 0 || !populationDensityGeoTransform) return 0;
+        
+        // 緯度経度がGeoTIFFの範囲外の場合のチェック
+        const [minX, minY, maxX, maxY] = populationDensityGeoTransform;
+        if (latlng.lng < minX || latlng.lng > maxX || latlng.lat < minY || latlng.lat > maxY) {
+            return 0; // 範囲外
+        }
+
         const [x, y] = latLngToPixel(latlng);
+        
+        // 範囲チェックを強化
         if (
-          x < 0 ||
-          x >= populationDensityWidth ||
-          y < 0 ||
-          y >= populationDensityHeight
-        )
-          return 0;
-        // 1次元配列としてアクセス
-        return populationDensityData[y * populationDensityWidth + x];
+            x < 0 ||
+            x >= populationDensityWidth ||
+            y < 0 ||
+            y >= populationDensityHeight
+        ) {
+            // console.warn("Pixel coordinates out of bounds:", x, y, "for LatLng:", latlng.lat, latlng.lng);
+            return 0;
+        }
+        
+        // 計算されるインデックスが配列の範囲内にあるか最終チェック
+        const index = y * populationDensityWidth + x;
+        if (index < 0 || index >= populationDensityData.length) {
+            // console.error("Calculated index out of bounds:", index, "Array length:", populationDensityData.length, "for LatLng:", latlng.lat, latlng.lng);
+            return 0;
+        }
+        
+        return populationDensityData[index];
       }
 
       // 駅の収益倍率を設定
@@ -3546,8 +3654,8 @@
         } else if (density < 2000) {
           const ratio = (density - 500) / 1500;
           r = 255;
-          g = 100 * ratio;
-          b = 100 * ratio;
+          g = 100 * (1 - ratio); // 修正: gを減らす
+          b = 100 * (1 - ratio); // 修正: bを減らす
           a = 0.6 + 0.2 * ratio;
         } else {
           const ratio = Math.min(1, (density - 2000) / 8000);
