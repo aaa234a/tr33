@@ -742,12 +742,12 @@
         },
         // revenuePerStationStop: 10000, // 駅に停車するたびに得られる基本収益 (廃止)
         passengerCapacityPerCar: 50, // 1車両あたりの乗客容量
-        basePassengerGeneration: 100, // 駅で生成される乗客の基本量 (人口密度倍率適用前)
+        basePassengerGeneration: 15, // ★修正: 駅で生成される乗客の基本量 (人口密度倍率適用前) を100から15に減らしました
         passengerRevenuePerPerson: 100, // 1人あたりの乗客収益（降車時）
         passengerGenerationInterval: 10000, // 乗客を生成する間隔 (ms)
         passengerMaxDestinationAttempts: 5, // 乗客の目的地を決定する際の試行回数
-        maxWaitingPassengersPerMeterOfPlatform: 10, // 新規追加: プラットフォーム1mあたりの最大待機乗客数
-        optimalCarsPerLineSegment: 10, // 新規追加: 1路線セグメントあたりの最適な車両数（乗客生成の供給係数調整用）
+        maxWaitingPassengersPerMeterOfPlatform: 2, // ★修正: プラットフォーム1mあたりの最大待機乗客数を10から2に減らしました
+        optimalCarsPerLineSegment: 10, // 1路線セグメントあたりの最適な車両数（乗客生成の供給係数調整用）
 
         // 列車種類を実在のものに修正
         trains: [
@@ -1929,25 +1929,7 @@
           };
           state.stations.push(newStation);
 
-          marker.on("click", function (e) {
-            e.originalEvent.stopPropagation();
-            var currentId = e.target.options.id;
-            if (state.lineBuildingMode) {
-              handleStationClickForLineBuilding(currentId);
-            } else if (state.demolitionMode) {
-              selectForDemolition("station", currentId);
-            }
-          });
-          platformLayer.on("click", function (e) {
-            e.originalEvent.stopPropagation();
-            var currentId = e.target.options.id;
-            if (state.demolitionMode) {
-              selectForDemolition("station", currentId);
-            }
-          });
-
-          // ポップアップは地名APIと人口密度データが揃ってから更新
-          // 初期ポップアップを設定。人口密度取得後に更新される。
+          // 修正1: 新規建設時にポップアップをバインド
           marker.bindPopup(
             "<b>" +
               newStation.name +
@@ -1964,6 +1946,30 @@
               newStation.maxWaitingPassengers +
               "人"
           );
+
+          marker.on("click", function (e) {
+            e.originalEvent.stopPropagation();
+            var currentId = e.target.options.id;
+            if (state.lineBuildingMode) {
+              handleStationClickForLineBuilding(currentId);
+            } else if (state.demolitionMode) {
+              selectForDemolition("station", currentId);
+            } else {
+              // 修正2: 通常クリック時にポップアップを開く
+              e.target.openPopup();
+            }
+          });
+          platformLayer.on("click", function (e) {
+            e.originalEvent.stopPropagation();
+            var currentId = e.target.options.id;
+            if (state.demolitionMode) {
+              selectForDemolition("station", currentId);
+            }
+          });
+
+          // ポップアップは地名APIと人口密度データが揃ってから更新
+          // 初期ポップアップを設定。人口密度取得後に更新される。
+          // marker.bindPopup(...) は上に移動
 
           fetch(
             "https://nominatim.openstreetmap.org/reverse?format=json&lat=" +
@@ -3466,6 +3472,25 @@
             maxWaitingPassengers: sData.maxWaitingPassengers || Math.floor(sData.platformLength * CONFIG.maxWaitingPassengersPerMeterOfPlatform),
           };
           state.stations.push(newStation);
+
+          // 修正3: ロード時にポップアップをバインド
+          marker.bindPopup(
+            "<b>" +
+              newStation.name +
+              "</b><br>ID: " +
+              newStation.id +
+              "<br>プラットフォーム長: " +
+              newStation.platformLength.toFixed(1) +
+              "m<br>収益倍率: " +
+              newStation.revenueMultiplier.toFixed(2) +
+              "<br>待機乗客: " +
+              newStation.passengersWaiting.length +
+              "人" +
+              "<br>最大待機乗客: " +
+              newStation.maxWaitingPassengers +
+              "人"
+          );
+
           marker.on("click", function (e) {
             e.originalEvent.stopPropagation();
             var id = e.target.options.id;
@@ -3473,6 +3498,9 @@
               handleStationClickForLineBuilding(id);
             } else if (state.demolitionMode) {
               selectForDemolition("station", id);
+            } else {
+              // 修正4: 通常クリック時にポップアップを開く
+              e.target.openPopup();
             }
           });
           platformLayer.on("click", function (e) {
@@ -3796,8 +3824,8 @@
         } else if (density < 2000) {
           const ratio = (density - 500) / 1500;
           r = 255;
-          g = 100 * (1 - ratio); // 修正: gを減らす
-          b = 100 * (1 - ratio); // 修正: bを減らす
+          g = Math.floor(100 * (1 - ratio)); // 修正: gを減らす
+          b = Math.floor(100 * (1 - ratio)); // 修正: bを減らす
           a = 0.6 + 0.2 * ratio;
         } else {
           const ratio = Math.min(1, (density - 2000) / 8000);
@@ -3852,7 +3880,8 @@
           loadPopulationDensityTiff();
           setGameSpeed(1); // 初期速度は1倍
 
-
+          // URLパラメータからのロードは削除されたため、常にlocalStorageからのロードを試みる
+          loadGame();
       });
     </script>
   </body>
