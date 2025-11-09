@@ -246,6 +246,16 @@
         border-color: #c82333;
       }
 
+      /* ゲーム速度ボタンの調整 */
+      #game-speed-control button {
+        width: calc(25% - 5px); /* 4つ並べる */
+        display: inline-block;
+        margin-right: 5px;
+      }
+      #game-speed-control button:last-child {
+        margin-right: 0;
+      }
+
       hr {
         border: none;
         border-top: 1px solid #eee;
@@ -441,6 +451,10 @@
           padding: 3px 8px;
           font-size: 0.75em;
         }
+        #game-speed-control button {
+          width: calc(25% - 4px);
+          margin-right: 4px;
+        }
       }
     </style>
   </head>
@@ -525,6 +539,15 @@
         <h3>セーブ/ロード</h3>
         <button id="save-game-btn">ゲームをセーブ</button>
         <button id="load-game-btn">ゲームをロード</button>
+      </div>
+
+      <!-- ゲーム速度コントロールを追加 -->
+      <div id="game-speed-control" class="panel">
+        <h3>ゲーム速度</h3>
+        <button data-speed="1" class="speed-btn active">1x</button>
+        <button data-speed="2" class="speed-btn">2x</button>
+        <button data-speed="4" class="speed-btn">4x</button>
+        <button data-speed="8" class="speed-btn">8x</button>
       </div>
     </div>
 
@@ -798,6 +821,9 @@
         selectedTrainToAssignId: null, // 路線に割り当てるために選択中の列車ID
         demolitionMode: false, // 解体モードかどうか
         selectedForDemolition: null, // 解体モードで選択されたオブジェクト { type: 'track'|'station', id: string }
+        gameSpeedMultiplier: 1, // 新規追加: ゲーム速度倍率
+        trainUpdateIntervalId: null, // 新規追加: 列車の更新setInterval ID
+        passengerGenerationIntervalId: null, // 新規追加: 乗客生成setInterval ID
       };
 
       // --- MAP: Leafletマップの初期化 ---
@@ -1470,7 +1496,7 @@
       }
 
       /**
-       * すべてのモードを非アクティブにするヘルパー関数
+       * 全てのモードを非アクティブにするヘルパー関数
        */
       function deactivateAllModes() {
         if (state.planning.type) {
@@ -1539,6 +1565,16 @@
       // セーブ/ロードボタン
       ui.saveGameButton.onclick = saveGame;
       ui.loadGameButton.onclick = loadGame;
+
+      // ゲーム速度ボタン
+      var speedButtons = document.querySelectorAll(
+        "#game-speed-control .speed-btn"
+      );
+      for (var i = 0; i < speedButtons.length; i++) {
+        speedButtons[i].onclick = function () {
+          setGameSpeed(parseInt(this.dataset.speed));
+        };
+      }
 
       // --- PLANNING (TRACK/STATION CONSTRUCTION): 線路・駅建設モードのロジック ---
       var dragging = false; // マップドラッグ中かどうかのフラグ
@@ -2601,7 +2637,7 @@
       // --- TRAIN MOVEMENT LOGIC: 列車移動の計算と更新 ---
       /** 全列車の位置と状態を更新する。 */
       function updateTrains() {
-        var deltaTime = CONFIG.updateInterval / 1000; // 秒単位
+        var deltaTime = (CONFIG.updateInterval / 1000) * state.gameSpeedMultiplier; // 秒単位
         var i;
 
         for (i = 0; i < state.trains.length; i++) {
@@ -2727,7 +2763,9 @@
           for (var i = 0; i < train.currentPassengers.length; i++) {
             var passenger = train.currentPassengers[i];
             if (passenger.destinationStationId === arrivedStationId) {
-              state.assets += CONFIG.passengerRevenuePerPerson;
+              // 変更点: 駅のrevenueMultiplierを乗算
+              state.assets +=
+                CONFIG.passengerRevenuePerPerson * arrivedStation.revenueMultiplier;
               passengersDisembarked++;
             } else {
               remainingPassengers.push(passenger);
@@ -2741,8 +2779,10 @@
                 arrivedStation.name +
                 "で降車し、$" +
                 (
-                  passengersDisembarked * CONFIG.passengerRevenuePerPerson
-                ).toLocaleString() +
+                  passengersDisembarked *
+                  CONFIG.passengerRevenuePerPerson *
+                  arrivedStation.revenueMultiplier
+                ).toLocaleString() + // ここも表示に合わせて変更
                 "の収益を得ました。",
               false,
               2000
@@ -2750,14 +2790,18 @@
           }
 
           // --- 乗客の乗車処理 ---
-          var availableCapacity = train.maxCapacity - train.currentPassengers.length;
+          var availableCapacity =
+            train.maxCapacity - train.currentPassengers.length;
           var passengersBoarded = 0;
           var passengersToBoard = [];
           var remainingStationPassengers = [];
 
           // 駅の待機乗客を、この路線の次の駅を目的地とする乗客から優先して乗せる
           var nextStationId = null;
-          if (train.direction === 1 && train.currentSegmentIndex < line.stationIds.length - 1) {
+          if (
+            train.direction === 1 &&
+            train.currentSegmentIndex < line.stationIds.length - 1
+          ) {
             nextStationId = line.stationIds[train.currentSegmentIndex + 1];
           } else if (train.direction === -1 && train.currentSegmentIndex > 0) {
             nextStationId = line.stationIds[train.currentSegmentIndex - 1];
@@ -2767,7 +2811,10 @@
           var i;
           for (i = 0; i < arrivedStation.passengersWaiting.length; i++) {
             var p = arrivedStation.passengersWaiting[i];
-            if (passengersBoarded < availableCapacity && p.destinationStationId === nextStationId) {
+            if (
+              passengersBoarded < availableCapacity &&
+              p.destinationStationId === nextStationId
+            ) {
               passengersToBoard.push(p);
               passengersBoarded++;
             } else {
@@ -2779,7 +2826,10 @@
           var currentLineStationIds = line.stationIds;
           for (i = 0; i < remainingStationPassengers.length; i++) {
             var p = remainingStationPassengers[i];
-            if (passengersBoarded < availableCapacity && currentLineStationIds.includes(p.destinationStationId)) {
+            if (
+              passengersBoarded < availableCapacity &&
+              currentLineStationIds.includes(p.destinationStationId)
+            ) {
               passengersToBoard.push(p);
               passengersBoarded++;
             } else {
@@ -2788,15 +2838,19 @@
           }
           // 重複を避けるため、一度クリアして再構築
           var tempRemaining = [];
-          for(i = 0; i < remainingStationPassengers.length; i++) {
+          for (i = 0; i < remainingStationPassengers.length; i++) {
             var p = remainingStationPassengers[i];
-            var alreadyBoarded = passengersToBoard.find(function(bp) { return bp.id === p.id; });
-            if (!alreadyBoarded && !currentLineStationIds.includes(p.destinationStationId)) {
+            var alreadyBoarded = passengersToBoard.find(function (bp) {
+              return bp.id === p.id;
+            });
+            if (
+              !alreadyBoarded &&
+              !currentLineStationIds.includes(p.destinationStationId)
+            ) {
               tempRemaining.push(p);
             }
           }
           remainingStationPassengers = tempRemaining;
-
 
           // 3. その他の駅を目的地とする乗客 (路線の駅ではないが、どこかの駅へ向かう乗客)
           for (i = 0; i < remainingStationPassengers.length; i++) {
@@ -2810,9 +2864,11 @@
           }
           // 重複を避けるため、一度クリアして再構築
           tempRemaining = [];
-          for(i = 0; i < remainingStationPassengers.length; i++) {
+          for (i = 0; i < remainingStationPassengers.length; i++) {
             var p = remainingStationPassengers[i];
-            var alreadyBoarded = passengersToBoard.find(function(bp) { return bp.id === p.id; });
+            var alreadyBoarded = passengersToBoard.find(function (bp) {
+              return bp.id === p.id;
+            });
             if (!alreadyBoarded) {
               tempRemaining.push(p);
             }
@@ -2838,7 +2894,7 @@
             moveToNextSegment();
             ui.renderTrainShop(); // 乗客数表示を更新するため
             setStationRevenueMultiplier(arrivedStation); // 駅の待機乗客数も更新されるためポップアップを更新
-          }, CONFIG.trainStopDuration);
+          }, CONFIG.trainStopDuration / state.gameSpeedMultiplier); // 倍速適用
         } else {
           if (arrivedStation) {
             ui.showMessage(
@@ -2874,11 +2930,11 @@
 
           // この駅を通る路線の供給状況を考慮
           var totalLineCarsAtStation = 0;
-          var linesServingStation = state.lines.filter(function(line) {
+          var linesServingStation = state.lines.filter(function (line) {
             return line.stationIds.includes(station.id);
           });
 
-          for(j = 0; j < linesServingStation.length; j++) {
+          for (j = 0; j < linesServingStation.length; j++) {
             totalLineCarsAtStation += linesServingStation[j].totalCarsOnLine;
           }
 
@@ -2919,12 +2975,49 @@
           }
           // 駅のポップアップを更新
           if (station.marker && station.marker.getPopup()) {
-             setStationRevenueMultiplier(station); // これでポップアップも更新される
+            setStationRevenueMultiplier(station); // これでポップアップも更新される
           }
         }
       }
-      setInterval(generatePassengersAtStations, CONFIG.passengerGenerationInterval);
 
+      /**
+       * ゲーム速度を設定し、タイマーを再設定する。
+       * @param {number} multiplier - 速度倍率 (例: 1, 2, 4, 8)
+       */
+      function setGameSpeed(multiplier) {
+        state.gameSpeedMultiplier = multiplier;
+
+        // 既存のインターバルをクリア
+        if (state.trainUpdateIntervalId) {
+          clearInterval(state.trainUpdateIntervalId);
+        }
+        if (state.passengerGenerationIntervalId) {
+          clearInterval(state.passengerGenerationIntervalId);
+        }
+
+        // 新しいインターバルを設定
+        state.trainUpdateIntervalId = setInterval(
+          updateTrains,
+          CONFIG.updateInterval / state.gameSpeedMultiplier
+        );
+        state.passengerGenerationIntervalId = setInterval(
+          generatePassengersAtStations,
+          CONFIG.passengerGenerationInterval / state.gameSpeedMultiplier
+        );
+
+        // UIのボタンのアクティブ状態を更新
+        var speedButtons = document.querySelectorAll(
+          "#game-speed-control .speed-btn"
+        );
+        for (var i = 0; i < speedButtons.length; i++) {
+          if (parseInt(speedButtons[i].dataset.speed) === multiplier) {
+            speedButtons[i].classList.add("active");
+          } else {
+            speedButtons[i].classList.remove("active");
+          }
+        }
+        ui.showMessage("ゲーム速度を " + multiplier + "倍に設定しました。", false, 1500);
+      }
 
       // --- RENDER TRAINS: マップ上での列車の描画とアニメーション ---
       /** 全列車の車両をマップ上に描画または更新する。 */
@@ -3109,6 +3202,7 @@
             };
           }),
           currentLineColorIndex: state.currentLineColorIndex,
+          gameSpeedMultiplier: state.gameSpeedMultiplier, // 新規追加
         };
 
         try {
@@ -3149,7 +3243,7 @@
         try {
           var loadedState = JSON.parse(savedData);
 
-          clearMapLayers(); // 人口密度レイヤーは残すように修正
+          clearMapLayers();
 
           // Reset state
           state = {
@@ -3167,6 +3261,9 @@
             selectedTrainToAssignId: null,
             demolitionMode: false,
             selectedForDemolition: null,
+            gameSpeedMultiplier: loadedState.gameSpeedMultiplier || 1, // ロード
+            trainUpdateIntervalId: null,
+            passengerGenerationIntervalId: null,
           };
 
           var i;
@@ -3304,6 +3401,7 @@
           ui.updateFinance();
           ui.renderTrainShop();
           renderTrains();
+          setGameSpeed(state.gameSpeedMultiplier); // ロード後にゲーム速度を再設定
           ui.showMessage("ゲームをロードしました！", false, 2000);
         } catch (e) {
           console.error("ゲームのロードに失敗しました:", e);
@@ -3316,7 +3414,7 @@
       // ===================================================================
 
       // グローバル変数としてGeoTIFFオブジェクトとラスタデータを保持
-      var populationDensityData = null; // 2次元配列 [y][x] で人口密度を保持
+      var populationDensityData = null; // 1次元配列で人口密度を保持
       var populationDensityGeoTransform = null; // [minX, minY, maxX, maxY]
       var populationDensityWidth = 0;
       var populationDensityHeight = 0;
@@ -3339,16 +3437,9 @@
           populationDensityWidth = image.getWidth();
           populationDensityHeight = image.getHeight();
 
-          // 全ピクセルを読み込んで配列に保持
+          // 全ピクセルを読み込んで1次元配列に保持 (RangeError対策)
           const raster = await image.readRasters();
-          populationDensityData = [];
-          for (let y = 0; y < populationDensityHeight; y++) {
-            populationDensityData[y] = [];
-            for (let x = 0; x < populationDensityWidth; x++) {
-              populationDensityData[y][x] =
-                raster[0][y * populationDensityWidth + x];
-            }
-          }
+          populationDensityData = raster[0]; // raster[0] はすでに型付き配列
 
           ui.showMessage(
             "人口密度データの読み込みが完了しました。",
@@ -3376,7 +3467,7 @@
           ui.showMessage(
             "人口密度データの読み込みに失敗しました。ファイルパスを確認してください。",
             false,
-            7000
+7000
           );
         }
       }
@@ -3395,7 +3486,7 @@
 
       // 人口密度を取得（キャッシュ配列から同期で取得）
       function getPopulationDensity(latlng) {
-        if (!populationDensityData) return 0;
+        if (!populationDensityData || populationDensityWidth === 0 || populationDensityHeight === 0) return 0;
         const [x, y] = latLngToPixel(latlng);
         if (
           x < 0 ||
@@ -3404,7 +3495,8 @@
           y >= populationDensityHeight
         )
           return 0;
-        return populationDensityData[y][x];
+        // 1次元配列としてアクセス
+        return populationDensityData[y * populationDensityWidth + x];
       }
 
       // 駅の収益倍率を設定
@@ -3505,12 +3597,10 @@
         populationDensityLayer.setZIndex(1);
       }
 
-      // --- GAME LOOP ---
-      setInterval(updateTrains, CONFIG.updateInterval);
-
       // --- INITIAL LOAD ---
       document.addEventListener("DOMContentLoaded", function () {
         loadPopulationDensityTiff();
+        setGameSpeed(1); // 初期速度は1倍
         // addPopulationDensityLayer(); // 人口密度レイヤーを初期表示したい場合はコメント解除
       });
     </script>
