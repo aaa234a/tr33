@@ -3080,7 +3080,8 @@
                 }
               }
             }
-            train.carMarkers = new Array(train.cars);
+            // 修正箇所: train.cars が不正な値の場合に 0 にフォールバック
+            train.carMarkers = new Array(train.cars || 0);
           }
 
           for (j = 0; j < train.cars; j++) {
