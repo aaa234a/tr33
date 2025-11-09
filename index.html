@@ -11,6 +11,8 @@
     />
     <!-- GeoTIFF.js を追加 -->
     <script src="https://cdn.jsdelivr.net/npm/geotiff@2.0.7/dist-browser/geotiff.js"></script>
+    <!-- LZ-String を追加: セーブデータを圧縮・解凍するために使用 -->
+    <script src="https://cdn.jsdelivr.net/npm/lz-string@1.4.4/libs/lz-string.min.js"></script>
 
     <style>
       /* 基本的なスタイル */
@@ -79,7 +81,7 @@
         box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
       }
 
-      /* left-panel の子要素のパネル (build-menu, train-shop, line-builder) */
+      /* left-panel の子要素のパネル (build-menu, finance-panel) */
       /* これらはFlexアイテムとしてレイアウトされるため、positionはstatic */
       #left-panel > .panel {
         background: #fdfdfd; /* 子パネルの背景色 */
@@ -395,6 +397,24 @@
         box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.25);
       }
 
+      /* テキストエリア */
+      textarea {
+        width: 100%;
+        margin: 8px 0;
+        padding: 10px;
+        border-radius: 5px;
+        border: 1px solid #ccc;
+        background-color: #fff;
+        font-size: 0.9em;
+        box-sizing: border-box;
+        resize: vertical; /* 垂直方向のみリサイズ可能 */
+      }
+      textarea:focus {
+        border-color: #007bff;
+        outline: none;
+        box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.25);
+      }
+
       /* モバイル対応 */
       @media (max-width: 768px) {
         /* ブレークポイントを調整 */
@@ -537,8 +557,18 @@
       <!-- セーブ/ロードメニューを追加 -->
       <div id="save-load-menu" class="panel">
         <h3>セーブ/ロード</h3>
-        <button id="save-game-btn">ゲームをセーブ</button>
-        <button id="load-game-btn">ゲームをロード</button>
+        <button id="save-game-btn">ゲームをセーブ (ローカル)</button>
+        <button id="load-game-btn">ゲームをロード (ローカル)</button>
+        <hr />
+        <h3>セーブデータを共有</h3>
+        <button id="export-save-btn">セーブデータを出力</button>
+        <textarea
+          id="save-data-textarea"
+          rows="5"
+          placeholder="セーブデータJSONまたは共有URLをここに入力/表示"
+        ></textarea>
+        <button id="import-save-btn">セーブデータを入力</button>
+        <button id="generate-share-url-btn">共有URLを生成</button>
       </div>
 
       <!-- ゲーム速度コントロールを追加 -->
@@ -915,6 +945,13 @@
         costGround: document.getElementById("cost-ground"),
         costViaduct: document.getElementById("cost-viaduct"),
         costTunnel: document.getElementById("cost-tunnel"),
+        // 新しいUI要素への参照
+        exportSaveButton: document.getElementById("export-save-btn"),
+        importSaveButton: document.getElementById("import-save-btn"),
+        saveDataTextarea: document.getElementById("save-data-textarea"),
+        generateShareUrlButton: document.getElementById(
+          "generate-share-url-btn"
+        ),
 
         /**
          * ユーザーにメッセージを表示する。
@@ -1604,9 +1641,14 @@
       ui.confirmDemolitionButton.onclick = confirmDemolition;
       ui.cancelDemolitionButton.onclick = cancelDemolition;
 
-      // セーブ/ロードボタン
+      // セーブ/ロードボタン (既存)
       ui.saveGameButton.onclick = saveGame;
       ui.loadGameButton.onclick = loadGame;
+
+      // 新しい共有機能のイベントリスナー
+      ui.exportSaveButton.onclick = exportSaveData;
+      ui.importSaveButton.onclick = importSaveData;
+      ui.generateShareUrlButton.onclick = generateShareUrl;
 
       // ゲーム速度ボタン
       var speedButtons = document.querySelectorAll(
@@ -2255,7 +2297,7 @@
           ui.showMessage(
             station.name + "を路線から削除しました。",
             false,
-            1500
+1500
           );
         } else {
           state.selectedStationsForLine.push(stationId);
@@ -3207,7 +3249,7 @@
         }
       }
 
-      // --- SAVE / LOAD GAME ---
+      // --- SAVE / LOAD GAME (共有機能対応のため、関数を分割・共通化) ---
 
       function serializeLatLng(latlng) {
         return latlng ? { lat: latlng.lat, lng: latlng.lng } : null;
@@ -3222,9 +3264,13 @@
         return (arr || []).map(deserializeLatLng);
       }
 
-      /** ゲームの状態を保存する */
-      function saveGame() {
-        var savableState = {
+      /**
+       * 現在のゲーム状態から保存可能なオブジェクトを生成する。
+       * Leafletレイヤーオブジェクトなどは除外し、再構築に必要なデータのみを抽出。
+       * @returns {object} 保存可能なゲーム状態オブジェクト。
+       */
+      function getSavableState() {
+        return {
           assets: state.assets,
           tracks: state.tracks.map(function (t) {
             return {
@@ -3241,8 +3287,8 @@
               latlngs: serializeLatLngs(s.latlngs),
               platformLength: s.platformLength,
               revenueMultiplier: s.revenueMultiplier,
-              passengersWaiting: s.passengersWaiting, // 新規追加
-              maxWaitingPassengers: s.maxWaitingPassengers, // 新規追加
+              passengersWaiting: s.passengersWaiting,
+              maxWaitingPassengers: s.maxWaitingPassengers,
             };
           }),
           lines: state.lines.map(function (l) {
@@ -3261,8 +3307,8 @@
                   distance: seg.distance,
                 };
               }),
-              totalTrainsOnLine: l.totalTrainsOnLine, // 新規追加
-              totalCarsOnLine: l.totalCarsOnLine, // 新規追加
+              totalTrainsOnLine: l.totalTrainsOnLine,
+              totalCarsOnLine: l.totalCarsOnLine,
             };
           }),
           trains: state.trains.map(function (t) {
@@ -3281,24 +3327,13 @@
               direction: t.direction,
               progress: t.progress,
               isStopped: t.isStopped,
-              currentPassengers: t.currentPassengers, // 新規追加
-              maxCapacity: t.maxCapacity, // 新規追加
+              currentPassengers: t.currentPassengers,
+              maxCapacity: t.maxCapacity,
             };
           }),
           currentLineColorIndex: state.currentLineColorIndex,
-          gameSpeedMultiplier: state.gameSpeedMultiplier, // 新規追加
+          gameSpeedMultiplier: state.gameSpeedMultiplier,
         };
-
-        try {
-          localStorage.setItem(
-            "railBuilderSaveGame",
-            JSON.stringify(savableState)
-          );
-          ui.showMessage("ゲームをセーブしました！", false, 2000);
-        } catch (e) {
-          console.error("ゲームのセーブに失敗しました:", e);
-          ui.showMessage("ゲームのセーブに失敗しました。", false, 3000);
-        }
       }
 
       /** マップ上の全てのLeafletレイヤーをクリアする */
@@ -3328,181 +3363,283 @@
         }
       }
 
-      /** ゲームの状態をロードする */
+      /**
+       * ロードされたデータオブジェクトからゲーム状態を復元する。
+       * @param {object} loadedState - ロードするゲーム状態オブジェクト。
+       * @returns {boolean} ロードが成功したかどうか。
+       */
+      function loadGameFromObject(loadedState) {
+        if (!loadedState) {
+          ui.showMessage("無効なゲームデータです。", false, 3000);
+          return false;
+        }
+
+        clearMapLayers();
+
+        // Reset state
+        state = {
+          assets: loadedState.assets,
+          tracks: [],
+          stations: [],
+          lines: [],
+          trains: [],
+          planning: { type: null, points: [], ghost: null },
+          lineBuildingMode: false,
+          selectedStationsForLine: [],
+          currentLineGhost: null,
+          selectedTrainToBuyId: null,
+          currentLineColorIndex: loadedState.currentLineColorIndex || 0,
+          selectedTrainToAssignId: null,
+          demolitionMode: false,
+          selectedForDemolition: null,
+          gameSpeedMultiplier: loadedState.gameSpeedMultiplier || 1,
+          trainUpdateIntervalId: null,
+          passengerGenerationIntervalId: null,
+        };
+
+        var i;
+
+        // Rebuild tracks
+        for (i = 0; i < loadedState.tracks.length; i++) {
+          var tData = loadedState.tracks[i];
+          var latlngs = deserializeLatLngs(tData.latlngs);
+          var trackLayer = L.polyline(latlngs, {
+            className: "track-line track-" + tData.type,
+            weight: 4,
+            opacity: 0.9,
+            id: tData.id,
+          }).addTo(map);
+          state.tracks.push({
+            id: tData.id,
+            latlngs: latlngs,
+            layer: trackLayer,
+            type: tData.type,
+          });
+          trackLayer.on("click", function (e) {
+            e.originalEvent.stopPropagation();
+            if (state.demolitionMode) {
+              selectForDemolition("track", this.options.id);
+            }
+          });
+        }
+
+        // Rebuild stations
+        for (i = 0; i < loadedState.stations.length; i++) {
+          var sData = loadedState.stations[i];
+          var latlng = deserializeLatLng(sData.latlng);
+          var latlngs = deserializeLatLngs(sData.latlngs);
+          var platformLayer = L.polyline(latlngs, {
+            className: "station-platform",
+            color: "#d9534f",
+            weight: 6,
+            opacity: 0.9,
+            id: sData.id,
+          }).addTo(map);
+          var marker = L.marker(latlng, {
+            icon: L.divIcon({
+              className: "station-marker",
+              iconSize: [16, 16],
+            }),
+            id: sData.id,
+          }).addTo(map);
+          var newStation = {
+            id: sData.id,
+            name: sData.name,
+            latlng: latlng,
+            latlngs: latlngs,
+            platformLength: sData.platformLength,
+            layer: platformLayer,
+            marker: marker,
+            revenueMultiplier: sData.revenueMultiplier || 1.0,
+            passengersWaiting: sData.passengersWaiting || [],
+            maxWaitingPassengers: sData.maxWaitingPassengers || Math.floor(sData.platformLength * CONFIG.maxWaitingPassengersPerMeterOfPlatform),
+          };
+          state.stations.push(newStation);
+          marker.on("click", function (e) {
+            e.originalEvent.stopPropagation();
+            var id = e.target.options.id;
+            if (state.lineBuildingMode) {
+              handleStationClickForLineBuilding(id);
+            } else if (state.demolitionMode) {
+              selectForDemolition("station", id);
+            }
+          });
+          platformLayer.on("click", function (e) {
+            e.originalEvent.stopPropagation();
+            var id = e.target.options.id;
+            if (state.demolitionMode) {
+              selectForDemolition("station", id);
+            }
+          });
+          setStationRevenueMultiplier(newStation); // ロード時にも人口密度を適用
+        }
+
+        // Rebuild lines
+        for (i = 0; i < loadedState.lines.length; i++) {
+          var lData = loadedState.lines[i];
+          var linePathLatLngs = [];
+          if (lData.segments && lData.segments.length > 0) {
+            linePathLatLngs = deserializeLatLngs(lData.segments[0].latlngs);
+            for (var j = 1; j < lData.segments.length; j++) {
+              var segLatLngs = deserializeLatLngs(lData.segments[j].latlngs);
+              Array.prototype.push.apply(
+                linePathLatLngs,
+                segLatLngs.slice(1)
+              );
+            }
+          }
+          var lineLayer = L.polyline(linePathLatLngs, {
+            className: "line-color",
+            color: lData.color,
+            weight: 5,
+            opacity: 0.8,
+            id: lData.id,
+          }).addTo(map);
+          state.lines.push({
+            id: lData.id,
+            name: lData.name,
+            stationIds: lData.stationIds,
+            color: lData.color,
+            layer: lineLayer,
+            totalDistance: lData.totalDistance,
+            assignedTrainIds: lData.assignedTrainIds,
+            segments: lData.segments.map(function (seg) {
+              return {
+                startStationId: seg.startStationId,
+                endStationId: seg.endStationId,
+                latlngs: deserializeLatLngs(seg.latlngs),
+                distance: seg.distance,
+              };
+            }),
+            totalTrainsOnLine: lData.totalTrainsOnLine || 0,
+            totalCarsOnLine: lData.totalCarsOnLine || 0,
+          });
+        }
+
+        // Rebuild trains
+        for (i = 0; i < loadedState.trains.length; i++) {
+          var trainData = loadedState.trains[i];
+          var newTrain = Object.assign({}, trainData);
+          newTrain.stopTimer = null;
+          newTrain.carMarkers = []; // ロード時には空にして、renderTrainsで再作成させる
+          newTrain.currentLatLng = null; // will be calculated on next update
+          newTrain.currentHeading = 0;
+          state.trains.push(newTrain);
+        }
+
+        ui.updateFinance();
+        ui.renderTrainShop();
+        renderTrains();
+        setGameSpeed(state.gameSpeedMultiplier); // ロード後にゲーム速度を再設定
+        return true;
+      }
+
+      /** ゲームの状態をローカルストレージに保存する。 */
+      function saveGame() {
+        var savableState = getSavableState();
+        try {
+          localStorage.setItem(
+            "railBuilderSaveGame",
+            JSON.stringify(savableState)
+          );
+          ui.showMessage("ゲームをセーブしました！ (ローカル)", false, 2000);
+        } catch (e) {
+          console.error("ゲームのセーブに失敗しました:", e);
+          ui.showMessage("ゲームのセーブに失敗しました。", false, 3000);
+        }
+      }
+
+      /** ローカルストレージからゲームの状態をロードする。 */
       function loadGame() {
         var savedData = localStorage.getItem("railBuilderSaveGame");
         if (!savedData) {
           ui.showMessage("保存されたゲームデータがありません。", false, 3000);
           return;
         }
-
         try {
           var loadedState = JSON.parse(savedData);
-
-          clearMapLayers();
-
-          // Reset state
-          state = {
-            assets: loadedState.assets,
-            tracks: [],
-            stations: [],
-            lines: [],
-            trains: [],
-            planning: { type: null, points: [], ghost: null },
-            lineBuildingMode: false,
-            selectedStationsForLine: [],
-            currentLineGhost: null,
-            selectedTrainToBuyId: null,
-            currentLineColorIndex: loadedState.currentLineColorIndex || 0,
-            selectedTrainToAssignId: null,
-            demolitionMode: false,
-            selectedForDemolition: null,
-            gameSpeedMultiplier: loadedState.gameSpeedMultiplier || 1, // ロード
-            trainUpdateIntervalId: null,
-            passengerGenerationIntervalId: null,
-          };
-
-          var i;
-
-          // Rebuild tracks
-          for (i = 0; i < loadedState.tracks.length; i++) {
-            var tData = loadedState.tracks[i];
-            var latlngs = deserializeLatLngs(tData.latlngs);
-            var trackLayer = L.polyline(latlngs, {
-              className: "track-line track-" + tData.type,
-              weight: 4,
-              opacity: 0.9,
-              id: tData.id,
-            }).addTo(map);
-            state.tracks.push({
-              id: tData.id,
-              latlngs: latlngs,
-              layer: trackLayer,
-              type: tData.type,
-            });
-            trackLayer.on("click", function (e) {
-              e.originalEvent.stopPropagation();
-              if (state.demolitionMode) {
-                selectForDemolition("track", this.options.id);
-              }
-            });
+          if (loadGameFromObject(loadedState)) {
+            ui.showMessage("ゲームをロードしました！ (ローカル)", false, 2000);
           }
-
-          // Rebuild stations
-          for (i = 0; i < loadedState.stations.length; i++) {
-            var sData = loadedState.stations[i];
-            var latlng = deserializeLatLng(sData.latlng);
-            var latlngs = deserializeLatLngs(sData.latlngs);
-            var platformLayer = L.polyline(latlngs, {
-              className: "station-platform",
-              color: "#d9534f",
-              weight: 6,
-              opacity: 0.9,
-              id: sData.id,
-            }).addTo(map);
-            var marker = L.marker(latlng, {
-              icon: L.divIcon({
-                className: "station-marker",
-                iconSize: [16, 16],
-              }),
-              id: sData.id,
-            }).addTo(map);
-            var newStation = {
-              id: sData.id,
-              name: sData.name,
-              latlng: latlng,
-              latlngs: latlngs,
-              platformLength: sData.platformLength,
-              layer: platformLayer,
-              marker: marker,
-              revenueMultiplier: sData.revenueMultiplier || 1.0,
-              passengersWaiting: sData.passengersWaiting || [], // 新規追加
-              maxWaitingPassengers: sData.maxWaitingPassengers || Math.floor(sData.platformLength * CONFIG.maxWaitingPassengersPerMeterOfPlatform), // 新規追加
-            };
-            state.stations.push(newStation);
-            marker.on("click", function (e) {
-              e.originalEvent.stopPropagation();
-              var id = e.target.options.id;
-              if (state.lineBuildingMode) {
-                handleStationClickForLineBuilding(id);
-              } else if (state.demolitionMode) {
-                selectForDemolition("station", id);
-              }
-            });
-            platformLayer.on("click", function (e) {
-              e.originalEvent.stopPropagation();
-              var id = e.target.options.id;
-              if (state.demolitionMode) {
-                selectForDemolition("station", id);
-              }
-            });
-            // ロード時に人口密度に基づいて収益倍率を再設定
-            setStationRevenueMultiplier(newStation); // ロード時にも人口密度を適用
-          }
-
-          // Rebuild lines
-          for (i = 0; i < loadedState.lines.length; i++) {
-            var lData = loadedState.lines[i];
-            var linePathLatLngs = [];
-            if (lData.segments && lData.segments.length > 0) {
-              linePathLatLngs = deserializeLatLngs(lData.segments[0].latlngs);
-              for (var j = 1; j < lData.segments.length; j++) {
-                var segLatLngs = deserializeLatLngs(lData.segments[j].latlngs);
-                Array.prototype.push.apply(
-                  linePathLatLngs,
-                  segLatLngs.slice(1)
-                );
-              }
-            }
-            var lineLayer = L.polyline(linePathLatLngs, {
-              className: "line-color",
-              color: lData.color,
-              weight: 5,
-              opacity: 0.8,
-              id: lData.id,
-            }).addTo(map);
-            state.lines.push({
-              id: lData.id,
-              name: lData.name, // 路線名を追加
-              stationIds: lData.stationIds,
-              color: lData.color,
-              layer: lineLayer,
-              totalDistance: lData.totalDistance, // lData.totalDistanceに修正
-              assignedTrainIds: lData.assignedTrainIds,
-              segments: lData.segments.map(function (seg) {
-                return {
-                  startStationId: seg.startStationId,
-                  endStationId: seg.endStationId,
-                  latlngs: deserializeLatLngs(seg.latlngs),
-                  distance: seg.distance,
-                };
-              }),
-              totalTrainsOnLine: lData.totalTrainsOnLine || 0, // 新規追加
-              totalCarsOnLine: lData.totalCarsOnLine || 0, // 新規追加
-            });
-          }
-
-          // Rebuild trains
-          for (i = 0; i < loadedState.trains.length; i++) {
-            var trainData = loadedState.trains[i];
-            var newTrain = Object.assign({}, trainData);
-            newTrain.stopTimer = null;
-            newTrain.carMarkers = []; // ロード時には空にして、renderTrainsで再作成させる
-            newTrain.currentLatLng = null; // will be calculated on next update
-            newTrain.currentHeading = 0;
-            state.trains.push(newTrain);
-          }
-
-          ui.updateFinance();
-          ui.renderTrainShop();
-          renderTrains();
-          setGameSpeed(state.gameSpeedMultiplier); // ロード後にゲーム速度を再設定
-          ui.showMessage("ゲームをロードしました！", false, 2000);
         } catch (e) {
           console.error("ゲームのロードに失敗しました:", e);
           ui.showMessage("ゲームのロードに失敗しました。", false, 5000);
         }
       }
+
+      /** 現在のゲーム状態をJSONテキストとしてテキストエリアに出力する。 */
+      function exportSaveData() {
+        try {
+          var savableState = getSavableState();
+          var jsonString = JSON.stringify(savableState);
+          ui.saveDataTextarea.value = jsonString;
+          ui.showMessage("セーブデータを出力しました。テキストエリアからコピーしてください。", false, 3000);
+        } catch (e) {
+          console.error("セーブデータのエクスポートに失敗しました:", e);
+          ui.showMessage("セーブデータのエクスポートに失敗しました。", false, 3000);
+        }
+      }
+
+      /** テキストエリアのJSONテキストからゲーム状態をインポートする。 */
+      function importSaveData() {
+        var jsonString = ui.saveDataTextarea.value;
+        if (!jsonString) {
+          ui.showMessage("テキストエリアにセーブデータを貼り付けてください。", false, 3000);
+          return;
+        }
+        try {
+          var loadedState = JSON.parse(jsonString);
+          if (loadGameFromObject(loadedState)) {
+            ui.showMessage("セーブデータを入力し、ゲームをロードしました！", false, 2000);
+            ui.saveDataTextarea.value = ""; // ロード後クリア
+          }
+        } catch (e) {
+          console.error("セーブデータのインポートに失敗しました:", e);
+          ui.showMessage("無効なセーブデータです。JSON形式を確認してください。", false, 5000);
+        }
+      }
+
+      /** 現在のゲーム状態を圧縮し、URLパラメータとして含んだ共有URLを生成する。 */
+      function generateShareUrl() {
+        try {
+          var savableState = getSavableState();
+          var jsonString = JSON.stringify(savableState);
+          var compressed = LZString.compressToBase64(jsonString); // LZ-Stringで圧縮
+          var shareUrl = window.location.origin + window.location.pathname + "?saveData=" + encodeURIComponent(compressed);
+          ui.saveDataTextarea.value = shareUrl;
+          ui.showMessage("共有URLを生成しました。テキストエリアからコピーして共有してください。", false, 5000);
+        } catch (e) {
+          console.error("共有URLの生成に失敗しました:", e);
+          ui.showMessage("共有URLの生成に失敗しました。", false, 3000);
+        }
+      }
+
+      /** URLパラメータからゲームをロードする。 */
+      function loadGameFromUrlParam() {
+          var params = new URLSearchParams(window.location.search);
+          var saveDataParam = params.get("saveData");
+          if (saveDataParam) {
+              try {
+                  var decompressed = LZString.decompressFromBase64(saveDataParam); // LZ-Stringで解凍
+                  if (decompressed) {
+                      var loadedState = JSON.parse(decompressed);
+                      if (loadGameFromObject(loadedState)) {
+                          ui.showMessage("共有URLからゲームをロードしました！", false, 3000);
+                          // URLからロード後、URLパラメータをクリアする（リロード時に再度ロードされるのを防ぐため）
+                          history.replaceState({}, document.title, window.location.pathname);
+                          return true;
+                      }
+                  } else {
+                      ui.showMessage("共有URLのデータが破損しているか、無効です。", false, 5000);
+                  }
+              } catch (e) {
+                  console.error("URLからのゲームロードに失敗しました:", e);
+                  ui.showMessage("共有URLからのゲームロードに失敗しました。", false, 5000);
+              }
+          }
+          return false;
+      }
+
 
       // ===================================================================
       // 人口密度TIFF関連の機能追加
@@ -3693,7 +3830,7 @@
           const ctx = tile.getContext("2d");
           if (!populationDensityData) return tile;
 
-          const step = this.options.samplingResolution;
+          const step = this.options.tileSize / this.options.samplingResolution; // より細かいグリッドで描画
           for (let x = 0; x < this.options.tileSize; x += step) {
             for (let y = 0; y < this.options.tileSize; y += step) {
               const mapPixelX = coords.x * this.options.tileSize + x;
@@ -3724,9 +3861,20 @@
 
       // --- INITIAL LOAD ---
       document.addEventListener("DOMContentLoaded", function () {
-        loadPopulationDensityTiff();
-        setGameSpeed(1); // 初期速度は1倍
-        // addPopulationDensityLayer(); // 人口密度レイヤーを初期表示したい場合はコメント解除
+          loadPopulationDensityTiff();
+          setGameSpeed(1); // 初期速度は1倍
+
+          // URLパラメータにセーブデータがあるかチェック
+          var params = new URLSearchParams(window.location.search);
+          var saveDataParam = params.get("saveData");
+
+          if (saveDataParam) {
+              // URLからロードを試みる
+              loadGameFromUrlParam();
+          } else {
+              // URLパラメータがない場合、localStorageからのロードを試みる
+              loadGame();
+          }
       });
     </script>
   </body>
