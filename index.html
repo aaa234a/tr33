@@ -80,8 +80,8 @@
         gap: 15px; /* 子パネル間のスペースを増やす */
       }
       #left-panel.collapsed {
-        width: 50px; /* 最小幅 */
-        max-height: 50px; /* 最小高さ */
+        width: 60px; /* 最小幅をボタンより大きく変更 */
+        height: 60px; /* max-heightではなくheightで固定に変更 */
         overflow: hidden;
         padding: 0;
       }
@@ -111,6 +111,8 @@
       }
       #left-panel.collapsed .panel-toggle-btn {
         border-radius: 10px; /* 全体が丸くなるように */
+        top: 10px; /* 閉じた状態でのボタンの位置調整 */
+        right: 10px; /* 閉じた状態でのボタンの位置調整 */
       }
 
       #finance-panel {
@@ -630,11 +632,6 @@
         color: #555;
         margin-bottom: 20px;
       }
-      #tutorial-modal .tutorial-icon {
-        font-size: 3em;
-        color: #28a745;
-        margin-bottom: 20px;
-      }
       .tutorial-navigation-buttons button {
         width: auto;
         padding: 10px 20px;
@@ -988,7 +985,7 @@
       // ===================================================================
       L.RotatedMarker = L.Marker.extend({
         options: {
-          rotation: 0, // in degrees
+          rotation: 0,
         },
 
         onAdd: function (map) {
@@ -999,7 +996,6 @@
         updateRotation: function () {
           if (this._icon) {
             this._icon.style[L.DomUtil.TRANSFORM + "Origin"] = "center center";
-            // 既存のtransformプロパティがあればそれを維持し、rotateだけを上書き
             var currentTransform = this._icon.style[L.DomUtil.TRANSFORM];
             var newTransform =
               currentTransform.replace(/rotate\([^)]*\)/g, "").trim() +
@@ -1018,7 +1014,7 @@
 
         _setPos: function (pos) {
           L.Marker.prototype._setPos.call(this, pos);
-          this.updateRotation(); // 位置が更新されたら回転も再適用
+          this.updateRotation();
         },
       });
 
@@ -1634,7 +1630,7 @@
        */
       function getPointAtDistance(latlngs, distance) {
         if (!latlngs || latlngs.length < 2) {
-          return null;
+          return null
         }
         var currentDist = 0;
         for (var i = 0; i < latlngs.length - 1; i++) {
