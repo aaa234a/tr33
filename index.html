@@ -3420,15 +3420,23 @@
           var passengersBoardedCount = 0;
           var passengersToBoard = [];
           var currentLineStationIds = line.stationIds;
-          var nextStationId = null;
+          var nextStationId = null; // 列車が次に向かう駅のID
 
-          if (
-            train.direction === 1 &&
-            train.currentSegmentIndex < line.stationIds.length - 1
-          ) {
-            nextStationId = line.stationIds[train.currentSegmentIndex + 1];
-          } else if (train.direction === -1 && train.currentSegmentIndex > 0) {
-            nextStationId = line.stationIds[train.currentSegmentIndex - 1];
+          // 現在停車している駅の路線のインデックスを取得
+          var arrivedStationIndexInLine = currentLineStationIds.indexOf(arrivedStationId);
+
+          if (arrivedStationIndexInLine !== -1) {
+              if (train.direction === 1) {
+                  // 順方向で到着した場合、次に向かう駅は路線の次の駅
+                  if (arrivedStationIndexInLine + 1 < currentLineStationIds.length) {
+                      nextStationId = currentLineStationIds[arrivedStationIndexInLine + 1];
+                  }
+              } else { // train.direction === -1 (逆方向)
+                  // 逆方向で到着した場合、次に向かう駅は路線の前の駅
+                  if (arrivedStationIndexInLine - 1 >= 0) {
+                      nextStationId = currentLineStationIds[arrivedStationIndexInLine - 1];
+                  }
+              }
           }
 
           var tempPassengersWaiting = []; // 駅に残る乗客を一時的に保持する配列
@@ -3652,7 +3660,7 @@
       }
 
       // --- RENDER TRAINS: マップ上での列車の描画とアニメーション ---
-      /** 全列車の車両をマップ上に描画または更新する。 */
+      /** 全列車の位置と状態を更新する。 */
       function renderTrains() {
         var i, j;
         for (i = 0; i < state.trains.length; i++) {
