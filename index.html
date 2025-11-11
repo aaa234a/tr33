@@ -1054,14 +1054,14 @@
         passengerMaxDestinationAttempts: 5, // 乗客の目的地を決定する際の試行回数
         maxWaitingPassengersPerMeterOfPlatform: 2, // プラットフォーム1mあたりの最大待機乗客数
         // ★修正3: 1路線セグメントあたりの最適な車両数を10から5に減らしました
-        optimalCarsPerLineSegment: 10,
+        optimalCarsPerLineSegment: 5,
 
         // 列車種類を実在のものに修正
         trains: [
           {
             id: "e233",
             name: "E233系通勤電車",
-            // ★修正2: ユーザーの「5車両」という情報に合わせて、車両数を10から5に減らしました
+        
             cars: 10,
             cost: 1000000,
             color: "#007bff",
@@ -3549,7 +3549,7 @@
 
           // 供給量に応じた乗客生成ボーナス/ペナルティ
           // 輸送能力が過剰になると、供給係数の増加が鈍化、あるいは頭打ちになるように調整
-          var supplyFactor = 1.0;
+          var supplyFactor = 10.0;
           if (totalLineCarsAtStation > 0) {
             var optimalTotalCars =
               linesServingStation.length * CONFIG.optimalCarsPerLineSegment;
@@ -3559,7 +3559,7 @@
             // ★修正4: supplyFactorの計算式を調整し、最大倍率を2.5から3.0に引き上げました
             supplyFactor =
               1 + Math.log(1 + totalLineCarsAtStation / optimalTotalCars) * 1.0; // 0.8を1.0に変更
-            supplyFactor = Math.min(supplyFactor, 3.0); // 最大3.0倍に制限
+            supplyFactor = Math.min(supplyFactor, 10.0); // 最大3.0倍に制限
           }
 
           var actualCount = Math.floor(baseCount * supplyFactor);
