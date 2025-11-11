@@ -1203,7 +1203,7 @@
         trainUpdateIntervalId: null, // 新規追加: 列車の更新setInterval ID
         passengerGenerationIntervalId: null, // 新規追加: 乗客生成setInterval ID
         gameTime: 0, // 新規追加: ゲーム内時間 (ミリ秒)
-        gameTimeIntervalId: null, // 新規追加: ゲーム時間更新setInterval ID
+        gameTimeIntervalId: null,
       };
 
       // --- MAP: Leafletマップの初期化 ---
@@ -1632,7 +1632,7 @@
        */
       function getPointAtDistance(latlngs, distance) {
         if (!latlngs || latlngs.length < 2) {
-          return null
+          return null;
         }
         var currentDist = 0;
         for (var i = 0; i < latlngs.length - 1; i++) {
@@ -3475,19 +3475,8 @@
           }
           station.passengersWaiting = tempPassengersWaiting; // 処理済みの乗客を削除し、残りを更新
 
-          tempPassengersWaiting = []; // リセット
-
-          // 3. 最後に、その他の駅を目的地とする乗客を乗せる（この路線上ではないが、どこかの駅へ向かう乗客）
-          for (var i = 0; i < station.passengersWaiting.length; i++) {
-            var p = station.passengersWaiting[i];
-            if (passengersBoardedCount < availableCapacity) {
-              passengersToBoard.push(p);
-              passengersBoardedCount++;
-            } else {
-              tempPassengersWaiting.push(p);
-            }
-          }
-          station.passengersWaiting = tempPassengersWaiting; // 最終的に駅に残る乗客
+          // 3. 以前の「その他の駅を目的地とする乗客」を乗せるロジックを削除しました。
+          //    これにより、列車は運行している路線上の駅を目的地とする乗客のみを乗せるようになります。
 
           Array.prototype.push.apply(train.currentPassengers, passengersToBoard);
 
@@ -3580,20 +3569,27 @@
 
           for (var k = 0; k < actualCount; k++) {
             var destinationStation = null;
-            var attempts = 0;
-            while (
-              !destinationStation &&
-              attempts < CONFIG.passengerMaxDestinationAttempts
-            ) {
-              var randomIndex = Math.floor(Math.random() * state.stations.length);
-              var potentialDestination = state.stations[randomIndex];
-              if (potentialDestination.id !== station.id) {
-                destinationStation = potentialDestination;
-              }
-              attempts++;
+            // 修正箇所: 目的地を、この駅が属する路線の他の駅に限定する
+            var possibleDestinationStations = [];
+            for (var l = 0; l < linesServingStation.length; l++) {
+                var line = linesServingStation[l];
+                for (var m = 0; m < line.stationIds.length; m++) {
+                    var destId = line.stationIds[m];
+                    if (destId !== station.id && !possibleDestinationStations.includes(destId)) {
+                        possibleDestinationStations.push(destId);
+                    }
+                }
             }
 
-            if (destinationStation) {
+            if (possibleDestinationStations.length > 0) {
+                // 接続可能な駅の中からランダムに選択
+                var randomIndex = Math.floor(Math.random() * possibleDestinationStations.length);
+                destinationStation = getStationById(possibleDestinationStations[randomIndex]);
+            }
+            // else: この駅がどの路線にも属していない、または単独の駅である場合、乗客は生成されない。
+            // これにより、無駄な乗客が減り、降車率が上がる。
+
+            if (destinationStation) { // destinationStation が null でない場合のみ乗客を追加
               station.passengersWaiting.push({
                 id: generateUniqueId(),
                 destinationStationId: destinationStation.id,
@@ -4216,7 +4212,13 @@
           var loadedState = JSON.parse(decrypted);
 
           if (loadGameFromObject(loadedState)) {
-            ui.showMessage("ゲームをロードしました！ (ローカル)", "success", false, 2000);
+            ui.showMessage(
+              "セーブデータを入力し、ゲームをロードしました！",
+              "success",
+              false,
+              2000
+            );
+            ui.saveDataTextarea.value = ""; // ロード後クリア
           }
         } catch (e) {
           console.error("ゲームのロードに失敗しました:", e);
