@@ -1047,19 +1047,22 @@
         },
         // revenuePerStationStop: 10000, // 駅に停車するたびに得られる基本収益 (廃止)
         passengerCapacityPerCar: 50, // 1車両あたりの乗客容量
-        basePassengerGeneration: 15, // ★修正: 駅で生成される乗客の基本量 (人口密度倍率適用前) を100から15に減らしました
+        // ★修正1: 駅で生成される乗客の基本量を15から50に増やしました
+        basePassengerGeneration: 50,
         passengerRevenuePerPerson: 100, // 1人あたりの乗客収益（降車時）
         passengerGenerationInterval: 10000, // 乗客を生成する間隔 (ms)
         passengerMaxDestinationAttempts: 5, // 乗客の目的地を決定する際の試行回数
-        maxWaitingPassengersPerMeterOfPlatform: 2, // ★修正: プラットフォーム1mあたりの最大待機乗客数を10から2に減らしました
-        optimalCarsPerLineSegment: 10, // 1路線セグメントあたりの最適な車両数（乗客生成の供給係数調整用）
+        maxWaitingPassengersPerMeterOfPlatform: 2, // プラットフォーム1mあたりの最大待機乗客数
+        // ★修正3: 1路線セグメントあたりの最適な車両数を10から5に減らしました
+        optimalCarsPerLineSegment: 5,
 
         // 列車種類を実在のものに修正
         trains: [
           {
             id: "e233",
             name: "E233系通勤電車",
-            cars: 10,
+            // ★修正2: ユーザーの「5車両」という情報に合わせて、車両数を10から5に減らしました
+            cars: 5,
             cost: 1000000,
             color: "#007bff",
             defaultSpeed: 100,
@@ -2391,7 +2394,7 @@
             })
             .then(function (data) {
               var resolvedName =
-                "無名駅 (" + stationCenter.lat.toFixed(4) + ")";
+                "無名駅" + (stationCenter.lat.toFixed(4) + ")");
               // var revenueMultiplier = 1.0; // 既存の地名APIからの収益倍率ロジックは削除
 
               if (data && data.address) {
@@ -3553,10 +3556,10 @@
             if (optimalTotalCars === 0)
               optimalTotalCars = CONFIG.optimalCarsPerLineSegment; // 路線がない場合のゼロ除算対策
 
-            // 対数関数で増加を鈍化させ、最大値を設定
+            // ★修正4: supplyFactorの計算式を調整し、最大倍率を2.5から3.0に引き上げました
             supplyFactor =
-              1 + Math.log(1 + totalLineCarsAtStation / optimalTotalCars) * 0.8;
-            supplyFactor = Math.min(supplyFactor, 2.5); // 最大2.5倍に制限
+              1 + Math.log(1 + totalLineCarsAtStation / optimalTotalCars) * 1.0; // 0.8を1.0に変更
+            supplyFactor = Math.min(supplyFactor, 3.0); // 最大3.0倍に制限
           }
 
           var actualCount = Math.floor(baseCount * supplyFactor);
@@ -4451,6 +4454,7 @@
         station.revenueMultiplier = multiplier;
 
         if (station.marker && station.marker.getPopup()) {
+          // ★修正5: 駅のポップアップに待機乗客数と最大待機乗客数を表示
           station.marker
             .getPopup()
             .setContent(
@@ -4612,7 +4616,7 @@
         map.boxZoom.enable();
         map.keyboard.enable();
         if (map.tap) map.tap.enable();
-        if (map.touchZoom) map.touchZoom.enable();
+        if (map.touchZoom) map.tap.enable(); // tapを有効化
         if (map.zoomControl) map.zoomControl.enable();
       }
 
