@@ -3571,13 +3571,14 @@
 
           for (var k = 0; k < actualCount; k++) {
             var destinationStation = null;
-            // 修正箇所: 目的地を、この駅が属する路線の他の駅に限定する
             var possibleDestinationStations = [];
-            for (var l = 0; l < linesServingStation.length; l++) {
-                var line = linesServingStation[l];
-                for (var m = 0; m < line.stationIds.length; m++) {
-                    var destId = line.stationIds[m];
-                    if (destId !== station.id && !possibleDestinationStations.includes(destId)) {
+
+            // 修正箇所: 現在の駅が属する路線の中からランダムに1つ選び、その路線上の他の駅を目的地とする
+            if (linesServingStation.length > 0) {
+                var selectedLine = linesServingStation[Math.floor(Math.random() * linesServingStation.length)];
+                for (var m = 0; m < selectedLine.stationIds.length; m++) {
+                    var destId = selectedLine.stationIds[m];
+                    if (destId !== station.id) { // 自分自身は目的地にしない
                         possibleDestinationStations.push(destId);
                     }
                 }
