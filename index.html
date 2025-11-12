@@ -3627,84 +3627,7 @@ trains: [
 
       // --- RENDER TRAINS: マップ上での列車の描画とアニメーション ---
 
-      /**
-       * 列車車両のSVG画像を生成するヘルパー関数。
-       * @param {string} type - 'front' (先頭車両) または 'middle' (中間車両)。
-       * @param {string} trainColor - 列車の色 (例: '#FF0000')。
-       * @param {number} width - SVGの幅 (px)。
-       * @param {number} height - SVGの高さ (px)。
-       * @returns {string} SVGデータURI。
-       */
-      function generateTrainImageSVG(type, trainColor, width, height) {
-        let svgContent;
-        const strokeColor = "#333";
-        const strokeWidth = Math.max(1, Math.min(2, width / 20)); // 幅に応じて線の太さを調整
 
-        if (type === "front") {
-          // 先頭車両のデザイン (やや丸みを帯びた先頭、ヘッドライト)
-          svgContent = `
-                <rect x="${strokeWidth / 2}" y="${strokeWidth / 2}" width="${
-            width - strokeWidth
-          }" height="${height - strokeWidth}" rx="${
-            height * 0.1
-          }" ry="${
-            height * 0.1
-          }" fill="${trainColor}" stroke="${strokeColor}" stroke-width="${strokeWidth}"/>
-                <path d="M${width - strokeWidth / 2},${height * 0.2} L${
-            width - strokeWidth / 2
-          },${height * 0.8} L${width * 0.8},${
-            height / 2
-          } Z" fill="white" stroke="${strokeColor}" stroke-width="${
-            strokeWidth / 2
-          }" stroke-linejoin="round"/>
-                <circle cx="${width * 0.9}" cy="${height * 0.25}" r="${
-            height * 0.1
-          }" fill="yellow" stroke="${strokeColor}" stroke-width="${
-            strokeWidth / 2
-          }"/>
-                <circle cx="${width * 0.9}" cy="${height * 0.75}" r="${
-            height * 0.1
-          }" fill="yellow" stroke="${strokeColor}" stroke-width="${
-            strokeWidth / 2
-          }"/>
-            `;
-        } else {
-          // 中間車両のデザイン (シンプルな長方形、窓、車輪)
-          svgContent = `
-                <rect x="${strokeWidth / 2}" y="${strokeWidth / 2}" width="${
-            width - strokeWidth
-          }" height="${height - strokeWidth}" rx="${
-            height * 0.1
-          }" ry="${
-            height * 0.1
-          }" fill="${trainColor}" stroke="${strokeColor}" stroke-width="${strokeWidth}"/>
-                <rect x="${width * 0.2}" y="${height * 0.2}" width="${
-            width * 0.2
-          }" height="${height * 0.3}" fill="skyblue" stroke="${strokeColor}" stroke-width="${
-            strokeWidth / 2
-          }"/>
-                <rect x="${width * 0.6}" y="${height * 0.2}" width="${
-            width * 0.2
-          }" height="${height * 0.3}" fill="skyblue" stroke="${strokeColor}" stroke-width="${
-            strokeWidth / 2
-          }"/>
-                <circle cx="${width * 0.25}" cy="${height * 0.75}" r="${
-            height * 0.1
-          }" fill="black"/>
-                <circle cx="${width * 0.75}" cy="${height * 0.75}" r="${
-            height * 0.1
-          }" fill="black"/>
-            `;
-        }
-
-        // URLエンコードしてデータURIとして返す
-        return (
-          "data:image/svg+xml;utf8," +
-          encodeURIComponent(
-            `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">${svgContent}</svg>`
-          )
-        );
-      }
 
       /** 全列車の車両をマップ上に描画または更新する。 */
 
@@ -4707,27 +4630,7 @@ trains: [
         }
       }
 
-      // --- INITIAL LOAD ---
-      document.addEventListener("DOMContentLoaded", function () {
-        // 各列車タイプにSVGデータURIを設定
-        CONFIG.trains.forEach(function (train) {
-          // 初期描画サイズは適当な値で設定。renderTrainsで実際のピクセルサイズに調整される。
-          // ここではSVGの生成に必要な最低限のサイズを与える。
-          train.frontCarImage = generateTrainImageSVG(
-            "front",
-            train.trainColor,
-            CONFIG.trainCarDimensionsMeters.length * 2, // 例: 2倍のピクセルサイズ
-            CONFIG.trainCarDimensionsMeters.width * 2
-          );
-          train.middleCarImage = generateTrainImageSVG(
-            "middle",
-            train.trainColor,
-            CONFIG.trainCarDimensionsMeters.length * 2,
-            CONFIG.trainCarDimensionsMeters.width * 2
-          );
-        });
-
-        loadPopulationDensityTiff().then(function () {
+           loadPopulationDensityTiff().then(function () {
           setGameSpeed(1); // 初期速度は1倍
           initTutorial(); // チュートリアルを初期化
         });
