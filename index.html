@@ -372,7 +372,6 @@
       #cancel-line-build:hover,
       #cancel-demolition:hover {
         background: #c82333;
-        border-color: #c82333;
       }
       #demolition-mode-btn {
         background: #6c757d; /* 解体モードは灰色 */
@@ -859,6 +858,8 @@
         <button data-speed="2" class="speed-btn">2x</button>
         <button data-speed="4" class="speed-btn">4x</button>
         <button data-speed="8" class="speed-btn">8x</button>
+        <button data-speed="10" class="speed-btn">10x</button>
+        <button data-speed="20" class="speed-btn">20x</button>
       </div>
     </div>
 
@@ -1054,13 +1055,16 @@
         },
         // revenuePerStationStop: 10000, // 駅に停車するたびに得られる基本収益 (廃止)
         passengerCapacityPerCar: 50, // 1車両あたりの乗客容量
-        basePassengerGeneration: 15, // ★修正: 駅で生成される乗客の基本量 (人口密度倍率適用前) を100から15に減らしました
+        // ★修正1: 駅で生成される乗客の基本量を15から50に増やしました (コードでは1000に設定)
+        basePassengerGeneration: 1000,
         passengerRevenuePerPerson: 100, // 1人あたりの乗客収益（降車時）
-        passengerGenerationInterval: 10000, // 乗客を生成する間隔 (ms)
+        passengerGenerationInterval: 100, // 乗客を生成する間隔 (ms)
         passengerMaxDestinationAttempts: 5, // 乗客の目的地を決定する際の試行回数
-        maxWaitingPassengersPerMeterOfPlatform: 2, // ★修正: プラットフォーム1mあたりの最大待機乗客数を10から2に減らしました
-        optimalCarsPerLineSegment: 10, // 1路線セグメントあたりの最適な車両数（乗客生成の供給係数調整用）
+        maxWaitingPassengersPerMeterOfPlatform: 2, // プラットフォーム1mあたりの最大待機乗客数
+        // ★修正3: 1路線セグメントあたりの最適な車両数を10から5に減らしました
+        optimalCarsPerLineSegment: 5,
 
+<<<<<<< HEAD
         // 列車種類を架空のものに修正し、画像設定用のプロパティを追加
 trains: [
   {
@@ -1114,6 +1118,108 @@ trains: [
     middleCarImage: "data:image/png;base64,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",
   },
 ],
+=======
+        // 列車種類を実在のものに修正
+        trains: [
+          {
+            id: "e233",
+            name: "E233系通勤電車",
+
+            cars: 10,
+            cost: 1000000,
+            color: "#007bff",
+            defaultSpeed: 100,
+          },
+          {
+            id: "e259",
+            name: "E259系成田エクスプレス",
+            cars: 6,
+            cost: 1500000,
+            color: "#d9534f",
+            defaultSpeed: 130,
+          },
+          {
+            id: "n700s",
+            name: "N700S系新幹線",
+            cars: 16,
+            cost: 5000000,
+            color: "#5cb85c",
+            defaultSpeed: 285,
+          },
+          {
+            id: "485",
+            name: "485系特急電車",
+            cars: 8,
+            cost: 2000000,
+            color: "#f0ad4e",
+            defaultSpeed: 120,
+          },
+          {
+            id: "kiha40",
+            name: "キハ40系気動車",
+            cars: 4,
+            cost: 800000,
+            color: "#6f42c1",
+            defaultSpeed: 95,
+          },
+          {
+            id: "e6",
+            name: "E6系スーパーこまち",
+            cars: 7,
+            cost: 3000000,
+            color: "#d63384",
+            defaultSpeed: 320,
+          },
+          {
+            id: "h5",
+            name: "H5系北海道新幹線",
+            cars: 10,
+            cost: 4000000,
+            color: "#20c997",
+            defaultSpeed: 260,
+          },
+          {
+            id: "shinkansen-e7",
+            name: "E7系北陸新幹線",
+            cars: 12,
+            cost: 4500000,
+            color: "#6610f2",
+            defaultSpeed: 275,
+          },
+          {
+            id: "shinkansen-e3",
+            name: "E3系つばさ",
+            cars: 7,
+            cost: 2800000,
+            color: "#fd7e14",
+            defaultSpeed: 275,
+          },
+          {
+            id: "sunrise",
+            name: "寝台特急サンライズ瀬戸・出雲",
+            cars: 14,
+            cost: 3500000,
+            color: "#20c997",
+            defaultSpeed: 110,
+          },
+          {
+            id: "torokko",
+            name: "嵯峨野トロッコ列車",
+            cars: 5,
+            cost: 1200000,
+            color: "#ffc107",
+            defaultSpeed: 50,
+          },
+          {
+            id: "local",
+            name: "地方普通列車",
+            cars: 3,
+            cost: 500000,
+            color: "#6c757d",
+            defaultSpeed: 80,
+          },
+        ],
+>>>>>>> 7758c9bfa2fa1baa0af77b0893d5a199414fe89e
 
         trainCarDimensionsMeters: {
           // 車両のサイズ (メートル)
@@ -1164,7 +1270,7 @@ trains: [
         trainUpdateIntervalId: null, // 新規追加: 列車の更新setInterval ID
         passengerGenerationIntervalId: null, // 新規追加: 乗客生成setInterval ID
         gameTime: 0, // 新規追加: ゲーム内時間 (ミリ秒)
-        gameTimeIntervalId: null, // 新規追加: ゲーム時間更新setInterval ID
+        gameTimeIntervalId: null,
       };
 
       // --- MAP: Leafletマップの初期化 ---
@@ -2352,7 +2458,7 @@ trains: [
             })
             .then(function (data) {
               var resolvedName =
-                "無名駅 (" + stationCenter.lat.toFixed(4) + ")";
+                "無名駅" + (stationCenter.lat.toFixed(4) + ")");
               // var revenueMultiplier = 1.0; // 既存の地名APIからの収益倍率ロジックは削除
 
               if (data && data.address) {
@@ -3383,15 +3489,23 @@ trains: [
           var passengersBoardedCount = 0;
           var passengersToBoard = [];
           var currentLineStationIds = line.stationIds;
-          var nextStationId = null;
+          var nextStationId = null; // 列車が次に向かう駅のID
 
-          if (
-            train.direction === 1 &&
-            train.currentSegmentIndex < line.stationIds.length - 1
-          ) {
-            nextStationId = line.stationIds[train.currentSegmentIndex + 1];
-          } else if (train.direction === -1 && train.currentSegmentIndex > 0) {
-            nextStationId = line.stationIds[train.currentSegmentIndex - 1];
+          // 現在停車している駅の路線のインデックスを取得
+          var arrivedStationIndexInLine = currentLineStationIds.indexOf(arrivedStationId);
+
+          if (arrivedStationIndexInLine !== -1) {
+              if (train.direction === 1) {
+                  // 順方向で到着した場合、次に向かう駅は路線の次の駅
+                  if (arrivedStationIndexInLine + 1 < currentLineStationIds.length) {
+                      nextStationId = currentLineStationIds[arrivedStationIndexInLine + 1];
+                  }
+              } else { // train.direction === -1 (逆方向)
+                  // 逆方向で到着した場合、次に向かう駅は路線の前の駅
+                  if (arrivedStationIndexInLine - 1 >= 0) {
+                      nextStationId = currentLineStationIds[arrivedStationIndexInLine - 1];
+                  }
+              }
           }
 
           var tempPassengersWaiting = []; // 駅に残る乗客を一時的に保持する配列
@@ -3428,19 +3542,8 @@ trains: [
           }
           station.passengersWaiting = tempPassengersWaiting; // 処理済みの乗客を削除し、残りを更新
 
-          tempPassengersWaiting = []; // リセット
-
-          // 3. 最後に、その他の駅を目的地とする乗客を乗せる（この路線上ではないが、どこかの駅へ向かう乗客）
-          for (var i = 0; i < station.passengersWaiting.length; i++) {
-            var p = station.passengersWaiting[i];
-            if (passengersBoardedCount < availableCapacity) {
-              passengersToBoard.push(p);
-              passengersBoardedCount++;
-            } else {
-              tempPassengersWaiting.push(p);
-            }
-          }
-          station.passengersWaiting = tempPassengersWaiting; // 最終的に駅に残る乗客
+          // 3. 以前の「その他の駅を目的地とする乗客」を乗せるロジックを削除しました。
+          //    これにより、列車は運行している路線上の駅を目的地とする乗客のみを乗せるようになります。
 
           Array.prototype.push.apply(train.currentPassengers, passengersToBoard);
 
@@ -3517,10 +3620,10 @@ trains: [
             if (optimalTotalCars === 0)
               optimalTotalCars = CONFIG.optimalCarsPerLineSegment; // 路線がない場合のゼロ除算対策
 
-            // 対数関数で増加を鈍化させ、最大値を設定
+            // ★修正4: supplyFactorの計算式を調整し、最大倍率を2.5から3.0に引き上げました
             supplyFactor =
-              1 + Math.log(1 + totalLineCarsAtStation / optimalTotalCars) * 0.8;
-            supplyFactor = Math.min(supplyFactor, 2.5); // 最大2.5倍に制限
+              1 + Math.log(1 + totalLineCarsAtStation / optimalTotalCars) * 1.0; // 0.8を1.0に変更
+            supplyFactor = Math.min(supplyFactor, 3.0); // 最大3.0倍に制限
           }
 
           var actualCount = Math.floor(baseCount * supplyFactor);
@@ -3533,20 +3636,28 @@ trains: [
 
           for (var k = 0; k < actualCount; k++) {
             var destinationStation = null;
-            var attempts = 0;
-            while (
-              !destinationStation &&
-              attempts < CONFIG.passengerMaxDestinationAttempts
-            ) {
-              var randomIndex = Math.floor(Math.random() * state.stations.length);
-              var potentialDestination = state.stations[randomIndex];
-              if (potentialDestination.id !== station.id) {
-                destinationStation = potentialDestination;
-              }
-              attempts++;
+            var possibleDestinationStations = [];
+
+            // 修正箇所: 現在の駅が属する路線の中からランダムに1つ選び、その路線上の他の駅を目的地とする
+            if (linesServingStation.length > 0) {
+                var selectedLine = linesServingStation[Math.floor(Math.random() * linesServingStation.length)];
+                for (var m = 0; m < selectedLine.stationIds.length; m++) {
+                    var destId = selectedLine.stationIds[m];
+                    if (destId !== station.id) { // 自分自身は目的地にしない
+                        possibleDestinationStations.push(destId);
+                    }
+                }
             }
 
-            if (destinationStation) {
+            if (possibleDestinationStations.length > 0) {
+                // 接続可能な駅の中からランダムに選択
+                var randomIndex = Math.floor(Math.random() * possibleDestinationStations.length);
+                destinationStation = getStationById(possibleDestinationStations[randomIndex]);
+            }
+            // else: この駅がどの路線にも属していない、または単独の駅である場合、乗客は生成されない。
+            // これにより、無駄な乗客が減り、降車率が上がる。
+
+            if (destinationStation) { // destinationStation が null でない場合のみ乗客を追加
               station.passengersWaiting.push({
                 id: generateUniqueId(),
                 destinationStationId: destinationStation.id,
@@ -3616,6 +3727,7 @@ trains: [
       }
 
       // --- RENDER TRAINS: マップ上での列車の描画とアニメーション ---
+<<<<<<< HEAD
 
       /**
        * 列車車両のSVG画像を生成するヘルパー関数。
@@ -3697,6 +3809,9 @@ trains: [
       }
 
       /** 全列車の車両をマップ上に描画または更新する。 */
+=======
+      /** 全列車の位置と状態を更新する。 */
+>>>>>>> 7758c9bfa2fa1baa0af77b0893d5a199414fe89e
       function renderTrains() {
         var i, j;
         for (i = 0; i < state.trains.length; i++) {
@@ -4240,7 +4355,13 @@ trains: [
           var loadedState = JSON.parse(decrypted);
 
           if (loadGameFromObject(loadedState)) {
-            ui.showMessage("ゲームをロードしました！ (ローカル)", "success", false, 2000);
+            ui.showMessage(
+              "セーブデータを入力し、ゲームをロードしました！",
+              "success",
+              false,
+              2000
+            );
+            ui.saveDataTextarea.value = ""; // ロード後クリア
           }
         } catch (e) {
           console.error("ゲームのロードに失敗しました:", e);
@@ -4473,6 +4594,7 @@ trains: [
         station.revenueMultiplier = multiplier;
 
         if (station.marker && station.marker.getPopup()) {
+          // ★修正5: 駅のポップアップに待機乗客数と最大待機乗客数を表示
           station.marker
             .getPopup()
             .setContent(
@@ -4634,7 +4756,7 @@ trains: [
         map.boxZoom.enable();
         map.keyboard.enable();
         if (map.tap) map.tap.enable();
-        if (map.touchZoom) map.touchZoom.enable();
+        if (map.touchZoom) map.tap.enable(); // tapを有効化
         if (map.zoomControl) map.zoomControl.enable();
       }
 
