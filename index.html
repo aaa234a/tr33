@@ -1046,7 +1046,7 @@
         },
         // revenuePerStationStop: 10000, // 駅に停車するたびに得られる基本収益 (廃止)
         passengerCapacityPerCar: 50, // 1車両あたりの乗客容量
-        // ★修正1: 駅で生成される乗客の基本量を15から50に増やしました (コードでは1000に設定)
+        // ★修正1: 駅で生成される乗客の基本量を15から50に増やしました
         basePassengerGeneration: 1000,
         passengerRevenuePerPerson: 100, // 1人あたりの乗客収益（降車時）
         passengerGenerationInterval: 100, // 乗客を生成する間隔 (ms)
@@ -1202,7 +1202,7 @@
         demolitionMode: false, // 解体モードかどうか
         selectedForDemolition: null, // 解体モードで選択されたオブジェクト { type: 'track'|'station', id: string }
         gameSpeedMultiplier: 1, // 新規追加: ゲーム速度倍率
-        trainUpdateIntervalId: null, // 新規追加: 列車の更新setInterval ID
+        // trainUpdateIntervalId: null, // 削除: requestAnimationFrameで管理
         passengerGenerationIntervalId: null, // 新規追加: 乗客生成setInterval ID
         gameTime: 0, // 新規追加: ゲーム内時間 (ミリ秒)
         gameTimeIntervalId: null,
@@ -2573,6 +2573,7 @@
         ui.showMessage(trainToBuyConfig.name + "を購入しました！", "success", false, 2000);
         state.selectedTrainToBuyId = null;
         ui.renderTrainShop();
+        // renderTrains(); // 列車が割り当てられたらレンダリングを更新 (gameLoopで自動的に行われる)
       }
 
       /** 路線に割り当てる列車を選択する。 */
@@ -3263,9 +3264,8 @@
 
       // --- TRAIN MOVEMENT LOGIC: 列車移動の計算と更新 ---
       /** 全列車の位置と状態を更新する。 */
-      function updateTrains() {
-        var deltaTime =
-          (CONFIG.updateInterval / 1000) * state.gameSpeedMultiplier; // 秒単位
+      function updateTrains(deltaTime) {
+        // var deltaTime = (CONFIG.updateInterval / 1000) * state.gameSpeedMultiplier; // 秒単位 // 削除
         var i;
 
         for (i = 0; i < state.trains.length; i++) {
@@ -3344,8 +3344,6 @@
             }
           }
         }
-
-        renderTrains();
       }
 
       /**
@@ -3614,6 +3612,32 @@
         ui.updateGameTimeDisplay();
       }
 
+      // --- GAME LOOP ---
+      var lastFrameTime = 0;
+      var gameLoopAccumulator = 0; // 経過時間蓄積用
+      var FIXED_UPDATE_INTERVAL_MS = CONFIG.updateInterval; // 固定の更新間隔 (ms)
+
+      function gameLoop(currentTime) {
+        if (!lastFrameTime) {
+          lastFrameTime = currentTime;
+        }
+        var elapsed = currentTime - lastFrameTime; // 前のフレームからの経過時間
+        lastFrameTime = currentTime;
+
+        // 経過時間を蓄積し、固定更新間隔ごとにupdateTrainsを呼び出す
+        // state.gameSpeedMultiplier は deltaTime の計算に影響を与える
+        gameLoopAccumulator += elapsed * state.gameSpeedMultiplier;
+
+        while (gameLoopAccumulator >= FIXED_UPDATE_INTERVAL_MS) {
+          updateTrains(FIXED_UPDATE_INTERVAL_MS / 1000); // 秒単位に変換して渡す
+          gameLoopAccumulator -= FIXED_UPDATE_INTERVAL_MS;
+        }
+
+        renderTrains(); // 毎フレーム描画
+
+        requestAnimationFrame(gameLoop);
+      }
+
       /**
        * ゲーム速度を設定し、タイマーを再設定する。
        * @param {number} multiplier - 速度倍率 (例: 1, 2, 4, 8)
@@ -3621,10 +3645,7 @@
       function setGameSpeed(multiplier) {
         state.gameSpeedMultiplier = multiplier;
 
-        // 既存のインターバルをクリア
-        if (state.trainUpdateIntervalId) {
-          clearInterval(state.trainUpdateIntervalId);
-        }
+        // 既存のインターバルをクリア (trainUpdateIntervalIdはrequestAnimationFrameになるので削除)
         if (state.passengerGenerationIntervalId) {
           clearInterval(state.passengerGenerationIntervalId);
         }
@@ -3633,10 +3654,6 @@
         }
 
         // 新しいインターバルを設定
-        state.trainUpdateIntervalId = setInterval(
-          updateTrains,
-          CONFIG.updateInterval / state.gameSpeedMultiplier
-        );
         state.passengerGenerationIntervalId = setInterval(
           generatePassengersAtStations,
           CONFIG.passengerGenerationInterval / state.gameSpeedMultiplier
@@ -3697,8 +3714,22 @@
                 }
               }
             }
-            // 修正箇所: train.cars が不正な値の場合に 0 にフォールバック
-            train.carMarkers = new Array(train.cars || 0);
+            train.carMarkers = []; // クリア
+            // 新しいマーカー配列を初期化
+            for (j = 0; j < train.cars; j++) {
+              // 仮のLatlngで初期化
+              train.carMarkers.push(
+                L.rotatedMarker(train.currentLatLng || L.latLng(0, 0), {
+                  icon: L.divIcon({
+                    className: "train-car-container",
+                    html: '<div class="train-car-body" style="background-color:' + train.color + ';"></div>',
+                    iconSize: [1, 1], // 初期サイズは小さく
+                    iconAnchor: [0, 0],
+                  }),
+                  rotation: 0,
+                }).addTo(map)
+              );
+            }
           }
 
           for (j = 0; j < train.cars; j++) {
@@ -3718,6 +3749,7 @@
               );
             } else {
               // セグメント外の車両は、先頭車両の方向へ延長線上に配置 (簡易的な処理)
+              // ここで getPointAtDistance が null を返す可能性があるのでチェック
               pointData = getPointAtDistance(
                 currentSegment.latlngs,
                 Math.max(
@@ -3727,7 +3759,13 @@
               );
             }
 
-            if (!pointData) continue;
+            if (!pointData) {
+              // pointDataが取得できない場合は、その車両をマップから削除
+              if (train.carMarkers[j] && map.hasLayer(train.carMarkers[j])) {
+                  map.removeLayer(train.carMarkers[j]);
+              }
+              continue;
+            }
 
             var carLatLng = pointData.latlng;
             var carHeading = pointData.heading;
@@ -3743,58 +3781,39 @@
               CONFIG.trainCarDimensionsMeters.width,
               carLatLng
             );
-            var maxDim = Math.max(carLengthPx, carWidthPx) + 4; // 少し余裕を持たせる
-            var iconSize = [maxDim, maxDim];
+            // LeafletのiconSizeは、アイコン全体のサイズであり、車両のボディサイズではない。
+            // iconAnchorを中央にするため、maxDimを計算して設定。
+            var maxDim = Math.max(carLengthPx, carWidthPx);
+            var iconSize = [maxDim, maxDim]; // アイコン全体のサイズ
+
             var rotation = carHeading - 90;
 
-            // 先頭車両に進行方向矢印を追加
-            var carBodyClass = j === 0 ? "train-car-body front-car" : "train-car-body";
+            var carMarker = train.carMarkers[j];
+            if (carMarker) {
+              carMarker.setLatLng(carLatLng);
+              carMarker.setRotation(rotation);
 
-            if (!train.carMarkers[j]) {
-              // 初回作成
-              var carIcon = L.divIcon({
-                className: "train-car-container",
-                html:
-                  '<div class="' +
-                  carBodyClass +
-                  '" style="background-color:' +
-                  train.color +
-                  '; width:' +
-                  carLengthPx +
-                  "px; height:" +
-                  carWidthPx +
-                  'px;"></div>',
-                iconSize: iconSize,
-                iconAnchor: [maxDim / 2, maxDim / 2],
-              });
-              train.carMarkers[j] = L.rotatedMarker(carLatLng, {
-                icon: carIcon,
-                rotation: rotation,
-              }).addTo(map);
-            } else {
-              // 更新
-              train.carMarkers[j].setLatLng(carLatLng);
-              train.carMarkers[j].setRotation(rotation);
-
-              // アイコンサイズと車両サイズを動的に更新
-              var iconElement = train.carMarkers[j].getElement();
+              var iconElement = carMarker.getElement();
               if (iconElement) {
                 var bodyElement = iconElement.querySelector(".train-car-body");
                 if (bodyElement) {
                   bodyElement.style.width = carLengthPx + "px";
                   bodyElement.style.height = carWidthPx + "px";
-                  bodyElement.className = carBodyClass; // クラスも更新
+                  // 先頭車両のクラスを更新
+                  if (j === 0) {
+                      bodyElement.classList.add("front-car");
+                  } else {
+                      bodyElement.classList.remove("front-car");
+                  }
                 }
                 // L.divIconのiconSizeは直接変更できないため、新しいアイコンをセットし直す
-                // ただし、これはコストが高いので、アイコンサイズが大きく変動しない場合は省略可能
-                // 今回は車両サイズが動的に変わるため、正確性を優先して再設定
-                train.carMarkers[j].setIcon(
+                // ただし、これはコストが高い。今回はmaxDimが変動するため、iconSizeの更新は必要。
+                // iconAnchorも再計算して設定
+                carMarker.setIcon(
                   L.divIcon({
                     className: "train-car-container",
                     html:
-                      '<div class="' +
-                      carBodyClass +
-                      '" style="background-color:' +
+                      '<div class="train-car-body ' + (j === 0 ? 'front-car' : '') + '" style="background-color:' +
                       train.color +
                       '; width:' +
                       carLengthPx +
@@ -3806,29 +3825,29 @@
                   })
                 );
               }
-            }
 
-            // 先頭車両にのみポップアップを設定/更新
-            if (j === 0) {
-              var popupContent =
-                "<b>" +
-                train.name +
-                "</b><br>" +
-                "路線: " +
-                line.name +
-                "<br>" +
-                "速度: " +
-                train.speed +
-                "km/h<br>" +
-                "乗客: " +
-                train.currentPassengers.length +
-                "/" +
-                train.maxCapacity +
-                "人";
-              if (!train.carMarkers[j].getPopup()) {
-                train.carMarkers[j].bindPopup(popupContent);
-              } else {
-                train.carMarkers[j].getPopup().setContent(popupContent);
+              // 先頭車両にのみポップアップを設定/更新
+              if (j === 0) {
+                var popupContent =
+                  "<b>" +
+                  train.name +
+                  "</b><br>" +
+                  "路線: " +
+                  line.name +
+                  "<br>" +
+                  "速度: " +
+                  train.speed +
+                  "km/h<br>" +
+                  "乗客: " +
+                  train.currentPassengers.length +
+                  "/" +
+                  train.maxCapacity +
+                  "人";
+                if (!carMarker.getPopup()) {
+                  carMarker.bindPopup(popupContent);
+                } else {
+                  carMarker.getPopup().setContent(popupContent);
+                }
               }
             }
           }
@@ -3995,7 +4014,7 @@
           demolitionMode: false,
           selectedForDemolition: null,
           gameSpeedMultiplier: loadedState.gameSpeedMultiplier || 1,
-          trainUpdateIntervalId: null,
+          // trainUpdateIntervalId: null, // 削除
           passengerGenerationIntervalId: null,
           gameTime: loadedState.gameTime || 0, // ゲーム時間をロード
           gameTimeIntervalId: null,
@@ -4176,7 +4195,7 @@
         ui.updateFinance();
         ui.updateGameTimeDisplay(); // ゲーム時間も更新
         ui.renderTrainShop();
-        renderTrains();
+        renderTrains(); // ロード直後に列車を描画
         setGameSpeed(state.gameSpeedMultiplier); // ロード後にゲーム速度を再設定
         return true;
       }
@@ -4674,6 +4693,7 @@
         loadPopulationDensityTiff().then(function () {
           setGameSpeed(1); // 初期速度は1倍
           initTutorial(); // チュートリアルを初期化
+          requestAnimationFrame(gameLoop); // ゲームループを開始
         });
       });
     </script>
