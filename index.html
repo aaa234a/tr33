@@ -9,6 +9,11 @@
       rel="stylesheet"
       href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css"
     />
+    <!-- Font Awesome for icons -->
+    <link
+      rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css"
+    />
     <!-- GeoTIFF.js を追加 -->
     <script src="https://cdn.jsdelivr.net/npm/geotiff@2.0.7/dist-browser/geotiff.js"></script>
     <!-- LZ-String を追加: セーブデータを圧縮・解凍するために使用 -->
@@ -24,11 +29,33 @@
         font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
         background-color: #f8f9fa; /* 全体の背景色 */
         color: #333;
+        overflow: hidden; /* チュートリアル表示時にスクロールバーが出ないように */
       }
       #map {
         height: 100%;
         width: 100%;
         cursor: default;
+      }
+      /* 建設モード中のカーソル */
+      #map.build-mode-cursor {
+        cursor: crosshair;
+      }
+
+      /* カスタムスクロールバー (Webkit系ブラウザ) */
+      ::-webkit-scrollbar {
+        width: 8px;
+        height: 8px;
+      }
+      ::-webkit-scrollbar-track {
+        background: #f1f1f1;
+        border-radius: 10px;
+      }
+      ::-webkit-scrollbar-thumb {
+        background: #888;
+        border-radius: 10px;
+      }
+      ::-webkit-scrollbar-thumb:hover {
+        background: #555;
       }
 
       /* トップレベルのパネル (left-panel, finance-panel) */
@@ -38,8 +65,9 @@
         background: rgba(255, 255, 255, 0.95); /* 背景を少し不透明に */
         padding: 15px; /* パディングを増やす */
         border-radius: 10px; /* 角を丸く */
-        box-shadow: 0 4px 10px rgba(0, 0, 0, 0.15); /* 影を強調 */
+        box-shadow: 0 6px 15px rgba(0, 0, 0, 0.2); /* 影を強調 */
         border: 1px solid #e0e0e0; /* 軽いボーダー */
+        transition: all 0.3s ease-out; /* 開閉アニメーション用 */
       }
       #left-panel {
         top: 15px;
@@ -51,6 +79,42 @@
         flex-direction: column;
         gap: 15px; /* 子パネル間のスペースを増やす */
       }
+      #left-panel.collapsed {
+        width: 60px; /* 最小幅をボタンより大きく変更 */
+        height: 60px; /* max-heightではなくheightで固定に変更 */
+        overflow: hidden;
+        padding: 0;
+      }
+      #left-panel.collapsed > *:not(.panel-toggle-btn) {
+        display: none; /* 開閉ボタン以外を非表示 */
+      }
+
+      .panel-toggle-btn {
+        position: absolute;
+        top: 0px;
+        right: 0px;
+        width: 40px;
+        height: 40px;
+        background: #007bff;
+        color: white;
+        border: none;
+        border-radius: 0 10px 0 10px;
+        cursor: pointer;
+        font-size: 1.2em;
+        line-height: 40px;
+        text-align: center;
+        transition: background 0.2s;
+        z-index: 1001; /* パネルコンテンツより手前 */
+      }
+      .panel-toggle-btn:hover {
+        background: #0056b3;
+      }
+      #left-panel.collapsed .panel-toggle-btn {
+        border-radius: 10px; /* 全体が丸くなるように */
+        top: 10px; /* 閉じた状態でのボタンの位置調整 */
+        right: 10px; /* 閉じた状態でのボタンの位置調整 */
+      }
+
       #finance-panel {
         top: 15px;
         right: 15px;
@@ -75,10 +139,20 @@
         border-radius: 25px; /* 角をさらに丸く */
         font-size: 1.1em;
         opacity: 0;
-        transition: opacity 0.4s ease-in-out; /* トランジションを長く */
+        transition: opacity 0.4s ease-in-out, background-color 0.3s, color 0.3s; /* トランジションを長く */
         pointer-events: none;
         white-space: nowrap;
         box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+      }
+      #message-bar.success {
+        background-color: rgba(40, 167, 69, 0.9);
+      }
+      #message-bar.warning {
+        background-color: rgba(255, 193, 7, 0.9);
+        color: #333;
+      }
+      #message-bar.error {
+        background-color: rgba(220, 53, 69, 0.9);
       }
 
       /* left-panel の子要素のパネル (build-menu, finance-panel) */
@@ -99,6 +173,8 @@
         font-size: 1.2em;
         border-bottom: 2px solid #eee;
         padding-bottom: 8px;
+        border-left: 5px solid #007bff; /* パネルヘッダーの強調 */
+        padding-left: 10px;
       }
       #left-panel > .panel h4 {
         margin-top: 15px;
@@ -108,26 +184,56 @@
       }
 
       /* マップ上の表示物 */
-      .track-line {
-        weight: 4;
+      /* 線路のレール */
+      .track-rail {
+        color: #b0b0b0; /* レール色 */
+        weight: 2;
         opacity: 0.9;
+        lineCap: butt; /* 端を四角に */
+        z-index: 10; /* 枕木より上 */
       }
-      .track-ground {
-        color: #444;
-      }
-      .track-viaduct {
-        color: #888;
-      }
-      .track-tunnel {
-        color: #666;
-        dasharray: "10,10";
+      /* 線路の枕木 */
+      .track-sleeper {
+        color: #5a4b40; /* 枕木色 */
+        weight: 8; /* 枕木は太く */
+        opacity: 0.9;
+        dashArray: "1 10"; /* 短い線と長い間隔で枕木を表現 */
+        lineCap: butt;
+        z-index: 5; /* レールより下 */
       }
 
-      .station-platform {
-        color: #d9534f;
-        weight: 6;
-        opacity: 0.9;
+      /* 高架線路の見た目 */
+      .track-viaduct-rail {
+        color: #c0c0c0;
       }
+      .track-viaduct-sleeper {
+        color: #706050;
+      }
+      /* トンネル線路の見た目 */
+      .track-tunnel-rail {
+        color: #808080;
+      }
+      .track-tunnel-sleeper {
+        color: #403020;
+      }
+
+      /* 駅ホーム本体 */
+      .station-platform-body {
+        color: #a0a0a0; /* コンクリート色 */
+        weight: 10; /* ホーム本体は太く */
+        opacity: 0.9;
+        lineCap: butt;
+        z-index: 15; /* レールより上 */
+      }
+      /* 駅ホームの縁 */
+      .station-platform-edge {
+        color: #ffffff; /* 白線 */
+        weight: 2; /* 細い縁 */
+        opacity: 1;
+        lineCap: butt;
+        z-index: 20; /* ホーム本体より上 */
+      }
+
       .station-marker {
         width: 16px;
         height: 16px;
@@ -137,6 +243,12 @@
         box-shadow: 0 0 5px rgba(0, 0, 0, 0.5);
         cursor: pointer;
         transition: transform 0.1s ease-out; /* ホバー時のアニメーション */
+        display: flex; /* 中央に数字を配置 */
+        justify-content: center;
+        align-items: center;
+        font-size: 0.8em;
+        font-weight: bold;
+        color: white;
       }
       .station-marker:hover {
         transform: scale(1.2); /* ホバーで少し拡大 */
@@ -151,17 +263,39 @@
         cursor: pointer;
       }
 
-      /* 解体モードで選択されたオブジェクトのスタイル */
-      .track-line.selected-for-demolition,
-      .station-platform.selected-for-demolition {
-        outline: 3px solid #dc3545; /* 赤いアウトライン */
-        outline-offset: 3px; /* アウトラインを外側に表示 */
-        box-shadow: 0 0 10px rgba(220, 53, 69, 0.8);
+      /* 駅名ツールチップ */
+      .station-name-tooltip {
+        background-color: rgba(0, 0, 0, 0.7);
+        color: white;
+        border: none;
+        border-radius: 5px;
+        padding: 4px 8px;
+        font-size: 0.9em;
+        white-space: nowrap;
+        pointer-events: none; /* クリックイベントを通過させる */
       }
+      .station-name-tooltip::before {
+        border-top-color: rgba(0, 0, 0, 0.7) !important;
+      }
+
+      /* 解体モードで選択されたオブジェクトのスタイル */
+      .selected-for-demolition {
+        animation: pulse 1s infinite alternate; /* 点滅アニメーション */
+      }
+      @keyframes pulse {
+        from {
+          outline: 3px solid rgba(220, 53, 69, 0.5);
+          box-shadow: 0 0 10px rgba(220, 53, 69, 0.3);
+        }
+        to {
+          outline: 3px solid rgba(220, 53, 69, 1);
+          box-shadow: 0 0 15px rgba(220, 53, 69, 0.8);
+        }
+      }
+
       .station-marker.selected-for-demolition {
         background: #dc3545; /* マーカーも赤く */
         border-color: #dc3545;
-        box-shadow: 0 0 8px rgba(220, 53, 69, 0.7);
       }
 
       .line-color {
@@ -181,20 +315,28 @@
         color: white; /* 文字色を白に */
         font-weight: bold;
         transition: background 0.2s, color 0.2s, border-color 0.2s,
-          box-shadow 0.2s;
+          box-shadow 0.2s, transform 0.2s;
         width: 100%;
         box-sizing: border-box;
         box-shadow: 0 2px 4px rgba(0, 123, 255, 0.2);
+        display: flex; /* アイコンとテキストを中央揃え */
+        align-items: center;
+        justify-content: center;
+      }
+      button i {
+        margin-right: 8px; /* アイコンとテキストの間隔 */
       }
       button:hover {
         background: #0056b3; /* ホバーで少し暗く */
         border-color: #0056b3;
         box-shadow: 0 4px 8px rgba(0, 123, 255, 0.3);
+        transform: translateY(-2px); /* 浮き上がるエフェクト */
       }
       button.active {
         background: #28a745; /* アクティブなボタンは緑色に */
         border-color: #28a745;
         box-shadow: 0 2px 4px rgba(40, 167, 69, 0.3);
+        transform: translateY(0); /* 浮き上がりをリセット */
       }
       button.active:hover {
         background: #218838;
@@ -206,6 +348,7 @@
         cursor: not-allowed;
         border-color: #dee2e6;
         box-shadow: none;
+        transform: translateY(0);
       }
       /* 特定のボタンのスタイル調整 */
       #confirm-build,
@@ -229,7 +372,6 @@
       #cancel-line-build:hover,
       #cancel-demolition:hover {
         background: #c82333;
-        border-color: #c82333;
       }
       #demolition-mode-btn {
         background: #6c757d; /* 解体モードは灰色 */
@@ -251,7 +393,7 @@
       /* ゲーム速度ボタンの調整 */
       #game-speed-control button {
         width: calc(25% - 5px); /* 4つ並べる */
-        display: inline-block;
+        display: inline-flex; /* flexに変更 */
         margin-right: 5px;
       }
       #game-speed-control button:last-child {
@@ -295,6 +437,11 @@
         border-color: #007bff;
         background: #e7f3ff;
         box-shadow: 0 2px 8px rgba(0, 123, 255, 0.2);
+      }
+      .train-item i {
+        font-size: 1.5em;
+        margin-right: 12px;
+        color: #666;
       }
       .train-item-color-box {
         width: 24px; /* サイズを少し大きく */
@@ -371,48 +518,132 @@
         /* 実際の車両の長方形 */
         border-radius: 2px;
         box-shadow: 0 0 3px rgba(0, 0, 0, 0.5);
-        border: 1px solid rgba(0, 0, 0, 0.2);
-        /* transform: rotate() はJSで設定 */
+        border: 1px solid rgba(0, 0, 0, 0.2); /* 車両の境界線 */
+        position: relative;
+      }
+      .train-car-body.front-car::after {
+        content: "";
+        position: absolute;
+        width: 0;
+        height: 0;
+        border-left: 8px solid transparent;
+        border-right: 8px solid transparent;
+        border-bottom: 12px solid white; /* 矢印の色 */
+        top: -12px; /* 車両の少し上に配置 */
+        left: 50%;
+        transform: translateX(-50%);
+        box-shadow: 0 -2px 5px rgba(0, 0, 0, 0.3);
       }
 
-      /* ドロップダウン */
-      select {
-        width: 100%;
-        margin-top: 5px;
-        padding: 10px;
+      /* 建設コスト表示ツールチップ */
+      .construction-cost-tooltip {
+        position: absolute;
+        background-color: rgba(0, 0, 0, 0.75);
+        color: white;
+        padding: 5px 10px;
         border-radius: 5px;
-        border: 1px solid #ccc;
-        background-color: #fff;
-        font-size: 1em;
-        box-sizing: border-box;
-        appearance: none; /* デフォルトの矢印を非表示に */
-        background-image: url("data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22%23007bff%22%20d%3D%22M287%2069.4a17.6%2017.6%200%200%200-13-5.4H18.4c-6.5%200-12.1%203.2-15.1%208.1-3%204.9-2.6%2011.3%201.3%2015.2l129.5%20129.5c2.4%202.4%205.8%204.1%209.5%204.1s7.1-1.7%209.5-4.1L285.4%2084.6c3.8-3.9%204.3-10.3%201.3-15.2z%22%2F%3E%3C%2Fsvg%3E");
-        background-repeat: no-repeat;
-        background-position: right 10px center;
-        background-size: 12px;
-      }
-      select:focus {
-        border-color: #007bff;
-        outline: none;
-        box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.25);
-      }
-
-      /* テキストエリア */
-      textarea {
-        width: 100%;
-        margin: 8px 0;
-        padding: 10px;
-        border-radius: 5px;
-        border: 1px solid #ccc;
-        background-color: #fff;
         font-size: 0.9em;
-        box-sizing: border-box;
-        resize: vertical; /* 垂直方向のみリサイズ可能 */
+        white-space: nowrap;
+        pointer-events: none;
+        z-index: 1000;
+        transform: translate(-50%, -120%); /* マウスカーソルから少しずらす */
       }
-      textarea:focus {
-        border-color: #007bff;
-        outline: none;
-        box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.25);
+
+      /* ロード中のスピナー */
+      #loading-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background-color: rgba(0, 0, 0, 0.7);
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        z-index: 9999;
+        color: white;
+        font-size: 1.5em;
+        flex-direction: column;
+        gap: 20px;
+        transition: opacity 0.3s ease-in-out;
+      }
+      .spinner {
+        border: 8px solid #f3f3f3; /* Light grey */
+        border-top: 8px solid #3498db; /* Blue */
+        border-radius: 50%;
+        width: 60px;
+        height: 60px;
+        animation: spin 2s linear infinite;
+      }
+      @keyframes spin {
+        0% {
+          transform: rotate(0deg);
+        }
+        100% {
+          transform: rotate(360deg);
+        }
+      }
+
+      /* チュートリアルモーダル */
+      #tutorial-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background-color: rgba(0, 0, 0, 0.8);
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        z-index: 2000;
+        opacity: 0;
+        visibility: hidden;
+        transition: opacity 0.3s ease-in-out, visibility 0.3s ease-in-out;
+      }
+      #tutorial-overlay.show {
+        opacity: 1;
+        visibility: visible;
+      }
+      #tutorial-modal {
+        background: #fff;
+        padding: 30px;
+        border-radius: 15px;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+        max-width: 600px;
+        width: 90%;
+        text-align: center;
+        transform: translateY(-20px);
+        transition: transform 0.3s ease-in-out;
+      }
+      #tutorial-overlay.show #tutorial-modal {
+        transform: translateY(0);
+      }
+      #tutorial-modal h2 {
+        color: #007bff;
+        font-size: 2em;
+        margin-bottom: 20px;
+        border-bottom: 2px solid #eee;
+        padding-bottom: 10px;
+      }
+      #tutorial-modal p {
+        font-size: 1.1em;
+        line-height: 1.6;
+        color: #555;
+        margin-bottom: 20px;
+      }
+      .tutorial-navigation-buttons button {
+        width: auto;
+        padding: 10px 20px;
+        margin: 0 10px;
+        font-size: 1em;
+      }
+      #tutorial-skip-btn {
+        background-color: #6c757d;
+        border-color: #6c757d;
+      }
+      #tutorial-skip-btn:hover {
+        background-color: #5a6268;
+        border-color: #5a6268;
       }
 
       /* モバイル対応 */
@@ -475,6 +706,20 @@
           width: calc(25% - 4px);
           margin-right: 4px;
         }
+        #tutorial-modal {
+          padding: 20px;
+        }
+        #tutorial-modal h2 {
+          font-size: 1.5em;
+        }
+        #tutorial-modal p {
+          font-size: 1em;
+        }
+        .tutorial-navigation-buttons button {
+          padding: 8px 15px;
+          margin: 0 5px;
+          font-size: 0.9em;
+        }
       }
     </style>
   </head>
@@ -482,19 +727,27 @@
     <div id="map"></div>
 
     <div id="left-panel" class="panel">
+      <button id="toggle-left-panel" class="panel-toggle-btn">
+        <i class="fas fa-chevron-left"></i>
+      </button>
+
       <div id="build-menu" class="panel">
         <h3>建設メニュー</h3>
         <button id="build-ground">
-          地上線 ($<span id="cost-ground"></span>/m)
+          <i class="fas fa-road"></i> 地上線 ($<span id="cost-ground"></span>/m)
         </button>
         <button id="build-viaduct">
-          高架線 ($<span id="cost-viaduct"></span>/m)
+          <i class="fas fa-bridge"></i> 高架線 ($<span id="cost-viaduct"></span
+          >/m)
         </button>
         <button id="build-tunnel">
-          トンネル ($<span id="cost-tunnel"></span>/m)
+          <i class="fas fa-tunnel"></i> トンネル ($<span id="cost-tunnel"></span
+          >/m)
         </button>
         <!-- 駅のコスト表示を基本料金と1mあたりの料金に変更 -->
-        <button id="build-station">駅 (基本 $50,000 + $1000/m)</button>
+        <button id="build-station">
+          <i class="fas fa-train-station"></i> 駅 (基本 $250,000 + $5,000/m)
+        </button>
         <hr />
         <button id="confirm-build" disabled>建設確定</button>
       </div>
@@ -505,7 +758,9 @@
         <div id="train-list">
           <!-- 列車アイテムがここに追加される -->
         </div>
-        <button id="buy-train-btn" disabled>選択した列車を購入</button>
+        <button id="buy-train-btn" disabled>
+          <i class="fas fa-cart-shopping"></i> 選択した列車を購入
+        </button>
         <hr />
         <h4>購入済み列車</h4>
         <div id="bought-trains-list">
@@ -522,27 +777,33 @@
           "
         ></select>
         <button id="assign-train-to-line-btn" disabled>
-          選択した列車を路線に割り当てる
+          <i class="fas fa-share-nodes"></i> 選択した列車を路線に割り当てる
         </button>
       </div>
 
       <div id="line-builder" class="panel">
         <h3>路線設定</h3>
-        <button id="start-line-build">路線設定開始</button>
+        <button id="start-line-build">
+          <i class="fas fa-route"></i> 路線設定開始
+        </button>
         <div id="selected-stations-list">
           <!-- 選択された駅がここに追加される -->
         </div>
         <!-- 路線確定ボタンのコスト表示を基本料金と1mあたりの料金に変更 -->
         <button id="confirm-line-build" disabled>
-          路線確定 (基本 $10,000 + $500/m)
+          <i class="fas fa-check"></i> 路線確定 (基本 $50,000 + $2,500/m)
         </button>
-        <button id="cancel-line-build">キャンセル</button>
+        <button id="cancel-line-build">
+          <i class="fas fa-xmark"></i> キャンセル
+        </button>
       </div>
 
       <!-- 解体メニューを追加 -->
       <div id="demolition-menu" class="panel">
         <h3>解体メニュー</h3>
-        <button id="demolition-mode-btn">解体モード</button>
+        <button id="demolition-mode-btn">
+          <i class="fas fa-hammer"></i> 解体モード
+        </button>
         <div
           id="demolition-info"
           style="margin-top: 10px; font-size: 0.9em; color: #555"
@@ -550,23 +811,35 @@
           <p>マップ上の線路や駅をクリックして選択してください。</p>
           <p id="selected-demolition-target"></p>
         </div>
-        <button id="confirm-demolition" disabled>解体確定</button>
-        <button id="cancel-demolition">解体キャンセル</button>
+        <button id="confirm-demolition" disabled>
+          <i class="fas fa-trash-can"></i> 解体確定
+        </button>
+        <button id="cancel-demolition">
+          <i class="fas fa-ban"></i> 解体キャンセル
+        </button>
       </div>
 
       <!-- セーブ/ロードメニューを追加 -->
       <div id="save-load-menu" class="panel">
         <h3>セーブ/ロード</h3>
-        <button id="save-game-btn">ゲームをセーブ (ローカル)</button>
-        <button id="load-game-btn">ゲームをロード (ローカル)</button>
+        <button id="save-game-btn">
+          <i class="fas fa-save"></i> ゲームをセーブ (ローカル)
+        </button>
+        <button id="load-game-btn">
+          <i class="fas fa-folder-open"></i> ゲームをロード (ローカル)
+        </button>
         <hr />
-        <button id="export-save-btn">セーブデータを出力</button>
+        <button id="export-save-btn">
+          <i class="fas fa-file-export"></i> セーブデータを出力
+        </button>
         <textarea
           id="save-data-textarea"
           rows="5"
           placeholder="セーブデータJSONをここに入力/表示"
         ></textarea>
-        <button id="import-save-btn">セーブデータを入力</button>
+        <button id="import-save-btn">
+          <i class="fas fa-file-import"></i> セーブデータを入力
+        </button>
       </div>
 
       <!-- ゲーム速度コントロールを追加 -->
@@ -576,14 +849,43 @@
         <button data-speed="2" class="speed-btn">2x</button>
         <button data-speed="4" class="speed-btn">4x</button>
         <button data-speed="8" class="speed-btn">8x</button>
+        <button data-speed="10" class="speed-btn">10x</button>
+        <button data-speed="20" class="speed-btn">20x</button>
       </div>
     </div>
 
     <div id="finance-panel" class="panel">
       <p>資産: <span id="assets-display">$0</span></p>
+      <p>時間: <span id="game-time-display">0日 00:00</span></p>
     </div>
 
     <div id="message-bar"></div>
+
+    <!-- ロード中のスピナーオーバーレイ -->
+    <div id="loading-overlay" style="display: none">
+      <div class="spinner"></div>
+      <p id="loading-message">データを読み込み中...</p>
+    </div>
+
+    <!-- チュートリアルモーダル -->
+    <div id="tutorial-overlay">
+      <div id="tutorial-modal">
+        <h2 id="tutorial-title"></h2>
+        <i id="tutorial-icon" class="tutorial-icon"></i>
+        <p id="tutorial-text"></p>
+        <div class="tutorial-navigation-buttons">
+          <button id="tutorial-prev-btn" disabled>
+            <i class="fas fa-chevron-left"></i> 前へ
+          </button>
+          <button id="tutorial-next-btn">
+            <i class="fas fa-chevron-right"></i> 次へ
+          </button>
+          <button id="tutorial-skip-btn">
+            <i class="fas fa-forward"></i> スキップ
+          </button>
+        </div>
+      </div>
+    </div>
 
     <script>
       // ===================================================================
@@ -684,7 +986,7 @@
       // ===================================================================
       L.RotatedMarker = L.Marker.extend({
         options: {
-          rotation: 0 // in degrees
+          rotation: 0,
         },
 
         onAdd: function (map) {
@@ -694,10 +996,13 @@
 
         updateRotation: function () {
           if (this._icon) {
-            this._icon.style[L.DomUtil.TRANSFORM + 'Origin'] = 'center center';
-            // 既存のtransformプロパティがあればそれを維持し、rotateだけを上書き
+            this._icon.style[L.DomUtil.TRANSFORM + "Origin"] = "center center";
             var currentTransform = this._icon.style[L.DomUtil.TRANSFORM];
-            var newTransform = currentTransform.replace(/rotate\([^)]*\)/g, '').trim() + ' rotate(' + this.options.rotation + 'deg)';
+            var newTransform =
+              currentTransform.replace(/rotate\([^)]*\)/g, "").trim() +
+              " rotate(" +
+              this.options.rotation +
+              "deg)";
             this._icon.style[L.DomUtil.TRANSFORM] = newTransform;
           }
         },
@@ -710,50 +1015,52 @@
 
         _setPos: function (pos) {
           L.Marker.prototype._setPos.call(this, pos);
-          this.updateRotation(); // 位置が更新されたら回転も再適用
-        }
+          this.updateRotation();
+        },
       });
 
       L.rotatedMarker = function (latlng, options) {
         return new L.RotatedMarker(latlng, options);
       };
 
-
       // ===================================================================
       // CONFIG: ゲームの設定値 (const -> var)
       // ===================================================================
       var CONFIG = {
-        initialAssets: 5000000, // 初期資産
+        initialAssets: 50000000, // 初期資産を増額
         costs: {
-          // 各種建設コスト
-          ground: { perMeter: 10 }, // 1mあたり10ドル
-          viaduct: { perMeter: 30 }, // 1mあたり30ドル
-          tunnel: { perMeter: 60 }, // 1mあたり60ドル
+          // 各種建設コストを増額
+          ground: { perMeter: 50 }, // 1mあたり50ドル
+          viaduct: { perMeter: 150 }, // 1mあたり150ドル
+          tunnel: { perMeter: 300 }, // 1mあたり300ドル
           station: {
             // 駅のコストは基本料金とプラットフォーム長に応じた費用
-            base: 50000,
-            perMeter: 1000, // 1メートルあたりの費用
+            base: 250000, // 基本料金を増額
+            perMeter: 5000, // 1メートルあたりの費用を増額
           },
           line: {
             // 路線のコストは基本料金と総距離に応じた費用
-            base: 10000,
-            perMeter: 500, // 1メートルあたりの費用
+            base: 50000, // 基本料金を増額
+            perMeter: 2500, // 1メートルあたりの費用を増額
           },
         },
         // revenuePerStationStop: 10000, // 駅に停車するたびに得られる基本収益 (廃止)
         passengerCapacityPerCar: 50, // 1車両あたりの乗客容量
-        basePassengerGeneration: 100, // 駅で生成される乗客の基本量 (人口密度倍率適用前)
+        // ★修正1: 駅で生成される乗客の基本量を15から50に増やしました (コードでは1000に設定)
+        basePassengerGeneration: 1000,
         passengerRevenuePerPerson: 100, // 1人あたりの乗客収益（降車時）
-        passengerGenerationInterval: 10000, // 乗客を生成する間隔 (ms)
+        passengerGenerationInterval: 100, // 乗客を生成する間隔 (ms)
         passengerMaxDestinationAttempts: 5, // 乗客の目的地を決定する際の試行回数
-        maxWaitingPassengersPerMeterOfPlatform: 10, // 新規追加: プラットフォーム1mあたりの最大待機乗客数
-        optimalCarsPerLineSegment: 10, // 新規追加: 1路線セグメントあたりの最適な車両数（乗客生成の供給係数調整用）
+        maxWaitingPassengersPerMeterOfPlatform: 2, // プラットフォーム1mあたりの最大待機乗客数
+        // ★修正3: 1路線セグメントあたりの最適な車両数を10から5に減らしました
+        optimalCarsPerLineSegment: 5,
 
         // 列車種類を実在のものに修正
         trains: [
           {
             id: "e233",
             name: "E233系通勤電車",
+
             cars: 10,
             cost: 1000000,
             color: "#007bff",
@@ -868,6 +1175,8 @@
         updateInterval: 50, // 列車の位置更新間隔 (ms)
         snapThresholdPixels: 15, // スナップ判定のピクセル距離
         snapThresholdMeters: 20, // 線路接続判定のメートル距離
+        gameTimeInterval: 1000, // ゲーム内時間更新間隔 (ms)
+        gameTimeScale: 60, // リアル1秒がゲーム内60秒に相当
       };
 
       // --- GAME STATE: ゲームの現在の状態を保持するオブジェクト (let -> var) ---
@@ -882,6 +1191,7 @@
           type: null, // 'ground', 'viaduct', 'tunnel'
           points: [], // 建設中の点の配列 (LatLng)
           ghost: null, // 建設中の仮ポリライン/マーカー (Leaflet Layer)
+          costTooltip: null, // 建設コスト表示ツールチップ
         },
         lineBuildingMode: false, // 路線設定モードかどうか
         selectedStationsForLine: [], // 路線設定中に選択された駅のIDリスト
@@ -894,13 +1204,15 @@
         gameSpeedMultiplier: 1, // 新規追加: ゲーム速度倍率
         trainUpdateIntervalId: null, // 新規追加: 列車の更新setInterval ID
         passengerGenerationIntervalId: null, // 新規追加: 乗客生成setInterval ID
+        gameTime: 0, // 新規追加: ゲーム内時間 (ミリ秒)
+        gameTimeIntervalId: null,
       };
 
       // --- MAP: Leafletマップの初期化 ---
       var map = L.map("map", { preferCanvas: true }).setView(
-        [35.68, 139.76],
-        13
-      ); // 東京駅周辺を初期表示
+        [36.2048, 138.2529],
+        7
+      ); // 日本の中心付近を初期表示、ズームレベル7
       L.tileLayer(
         "https://{s}.basemaps.cartocdn.com/rastertiles/voyager_nolabels/{z}/{x}/{y}{r.png}",
         {
@@ -912,6 +1224,7 @@
       // --- UI ELEMENTS: UI要素への参照とUI操作関数 ---
       var ui = {
         assetsDisplay: document.getElementById("assets-display"),
+        gameTimeDisplay: document.getElementById("game-time-display"), // 新規追加
         messageBar: document.getElementById("message-bar"),
         buildButtons: document.querySelectorAll(
           "#build-menu button:not(#confirm-build)"
@@ -947,19 +1260,24 @@
         exportSaveButton: document.getElementById("export-save-btn"),
         importSaveButton: document.getElementById("import-save-btn"),
         saveDataTextarea: document.getElementById("save-data-textarea"),
-        // generateShareUrlButton: document.getElementById("generate-share-url-btn"), // 削除
+        loadingOverlay: document.getElementById("loading-overlay"), // 新規追加
+        loadingMessage: document.getElementById("loading-message"), // 新規追加
+        toggleLeftPanelButton: document.getElementById("toggle-left-panel"), // 新規追加
 
         /**
          * ユーザーにメッセージを表示する。
          * @param {string} msg - 表示するメッセージ。
+         * @param {string} [type='info'] - メッセージのタイプ ('info', 'success', 'warning', 'error')。
          * @param {boolean} [persistent=false] - メッセージを永続的に表示するかどうか。
          * @param {number} [duration=3000] - メッセージを表示する時間 (ミリ秒)。
          */
-        showMessage: function (msg, persistent, duration) {
+        showMessage: function (msg, type, persistent, duration) {
+          if (type === undefined) type = "info";
           if (persistent === undefined) persistent = false;
           if (duration === undefined) duration = 3000;
 
           this.messageBar.textContent = msg;
+          this.messageBar.className = "message-bar " + type; // クラスを更新
           this.messageBar.style.opacity = 1;
           if (!persistent) {
             clearTimeout(this.messageBar.hideTimeout); // 既存のタイマーをクリア
@@ -975,6 +1293,20 @@
             "$" + Math.floor(state.assets).toLocaleString();
         },
 
+        /** ゲーム時間表示を更新する。 */
+        updateGameTimeDisplay: function () {
+          var totalMinutes = Math.floor(state.gameTime / 60000); // ミリ秒から分へ
+          var days = Math.floor(totalMinutes / (24 * 60));
+          var hours = Math.floor((totalMinutes % (24 * 60)) / 60);
+          var minutes = totalMinutes % 60;
+          this.gameTimeDisplay.textContent =
+            days +
+            "日 " +
+            String(hours).padStart(2, "0") +
+            ":" +
+            String(minutes).padStart(2, "0");
+        },
+
         /** 列車ショップのUIを更新する。 */
         renderTrainShop: function () {
           var self = this;
@@ -988,9 +1320,7 @@
             trainItem.className = self.trainItemClass(trainConfig.id, "buy");
             trainItem.dataset.trainId = trainConfig.id;
             trainItem.innerHTML =
-              '<div class="train-item-color-box" style="background-color:' +
-              trainConfig.color +
-              ';"></div>' +
+              '<i class="fas fa-train"></i>' + // 列車アイコンを追加
               '<div class="train-item-details">' +
               "<h4>" +
               trainConfig.name +
@@ -1038,9 +1368,7 @@
               ? getLineById(train.currentLineId)
               : null;
             trainItem.innerHTML =
-              '<div class="train-item-color-box" style="background-color:' +
-              train.color +
-              ';"></div>' +
+              '<i class="fas fa-train"></i>' + // 列車アイコンを追加
               '<div class="train-item-details">' +
               "<h4>" +
               train.name +
@@ -1124,7 +1452,7 @@
                 station.name +
                 ' <button data-station-id="' +
                 stationId +
-                '">削除</button>';
+                '"><i class="fas fa-xmark"></i> 削除</button>';
 
               item.querySelector("button").onclick = function (e) {
                 e.stopPropagation(); // 親要素のクリックイベントが発火しないように
@@ -1168,9 +1496,7 @@
             state.assets < potentialLineCost ||
             !pathFound;
           this.confirmLineBuildButton.textContent =
-            "路線確定 ($" +
-            Math.round(potentialLineCost).toLocaleString() +
-            ")";
+            "路線確定 ($" + Math.round(potentialLineCost).toLocaleString() + ")";
         },
 
         /** 建設メニューのボタンのアクティブ状態を設定する。 */
@@ -1204,8 +1530,8 @@
         setLineBuildModeActive: function (active) {
           if (active) {
             this.startLineBuildButton.classList.add("active");
-            this.confirmLineBuildButton.style.display = "block";
-            this.cancelLineBuildButton.style.display = "block";
+            this.confirmLineBuildButton.style.display = "flex"; // flexに変更
+            this.cancelLineBuildButton.style.display = "flex"; // flexに変更
             this.selectedStationsListDiv.style.display = "block";
           } else {
             this.startLineBuildButton.classList.remove("active");
@@ -1219,8 +1545,8 @@
         setDemolitionModeActive: function (active) {
           if (active) {
             this.demolitionModeButton.classList.add("active");
-            this.confirmDemolitionButton.style.display = "block";
-            this.cancelDemolitionButton.style.display = "block";
+            this.confirmDemolitionButton.style.display = "flex"; // flexに変更
+            this.cancelDemolitionButton.style.display = "flex"; // flexに変更
             this.selectedDemolitionTargetDisplay.style.display = "block";
           } else {
             this.demolitionModeButton.classList.remove("active");
@@ -1231,10 +1557,28 @@
           }
           this.confirmDemolitionButton.disabled = !state.selectedForDemolition;
         },
+
+        /** ロードオーバーレイの表示/非表示 */
+        showLoadingOverlay: function (message) {
+          this.loadingMessage.textContent = message || "データを読み込み中...";
+          this.loadingOverlay.style.display = "flex";
+          // opacityをtransitionさせるために少し遅延させる
+          setTimeout(function () {
+            ui.loadingOverlay.style.opacity = 1;
+          }, 10);
+        },
+
+        hideLoadingOverlay: function () {
+          this.loadingOverlay.style.opacity = 0;
+          setTimeout(function () {
+            ui.loadingOverlay.style.display = "none";
+          }, 300); // transitionの時間と合わせる
+        },
       };
 
       // --- INITIAL LOAD ---
       ui.updateFinance();
+      ui.updateGameTimeDisplay();
       ui.renderTrainShop();
       ui.setLineBuildModeActive(false); // 初期は非表示
       ui.setDemolitionModeActive(false); // 初期は非表示
@@ -1407,11 +1751,10 @@
         return distance;
       }
       /**
-
- * 緯度経度に基づいて駅オブジェクトを検索する（中心座標で比較）。
- * @param {L.LatLng} latlng - 検索する緯度経度。
- * @returns {object|null} - 見つかった駅オブジェクト、またはnull。
- */
+       * 緯度経度に基づいて駅オブジェクトを検索する（中心座標で比較）。
+       * @param {L.LatLng} latlng - 検索する緯度経度。
+       * @returns {object|null} - 見つかった駅オブジェクト、またはnull。
+       */
       function findStationByLatLng(latlng) {
         for (var i = 0; i < state.stations.length; i++) {
           // L.LatLng.equals() を使って座標を比較
@@ -1579,6 +1922,10 @@
             map.removeLayer(state.planning.ghost);
             state.planning.ghost = null;
           }
+          if (state.planning.costTooltip) {
+            map.removeLayer(state.planning.costTooltip);
+            state.planning.costTooltip = null;
+          }
           state.planning.points = [];
           state.planning.type = null;
           ui.resetBuildModeActive();
@@ -1590,6 +1937,7 @@
           cancelDemolition();
         }
         map.dragging.enable(); // マップドラッグを有効化
+        map.getContainer().classList.remove("build-mode-cursor"); // カーソルを元に戻す
       }
 
       // --- EVENT LISTENERS: 各種UIイベントハンドラの設定 ---
@@ -1656,6 +2004,19 @@
         };
       }
 
+      // 左パネル開閉ボタン
+      ui.toggleLeftPanelButton.onclick = function () {
+        document.getElementById("left-panel").classList.toggle("collapsed");
+        var icon = this.querySelector("i");
+        if (icon.classList.contains("fa-chevron-left")) {
+          icon.classList.remove("fa-chevron-left");
+          icon.classList.add("fa-chevron-right");
+        } else {
+          icon.classList.remove("fa-chevron-right");
+          icon.classList.add("fa-chevron-left");
+        }
+      };
+
       // --- PLANNING (TRACK/STATION CONSTRUCTION): 線路・駅建設モードのロジック ---
       var dragging = false; // マップドラッグ中かどうかのフラグ
 
@@ -1667,7 +2028,7 @@
         if (state.planning.type === type) {
           // 同じボタンを再度押したら解除
           deactivateAllModes(); // 全モードを解除
-          ui.showMessage("建設モードを解除しました。");
+          ui.showMessage("建設モードを解除しました。", "info");
           return;
         }
 
@@ -1680,9 +2041,11 @@
         } // 既存のゴーストをクリア
         state.planning.ghost = null;
         map.dragging.disable(); // 建設中はマップドラッグを無効化
+        map.getContainer().classList.add("build-mode-cursor"); // カーソルを変更
         ui.showMessage(
           (type === "station" ? "駅" : "線路") +
             "建設モード: マップをドラッグして建設します。",
+          "info",
           true
         );
         ui.setBuildModeActive(type);
@@ -1711,6 +2074,18 @@
             ghostStyle(state.planning.type)
           ).addTo(map);
         }
+
+        // コストツールチップの作成
+        if (!state.planning.costTooltip) {
+          state.planning.costTooltip = L.divIcon({
+            className: "construction-cost-tooltip",
+            html: "ドラッグして長さを決定",
+            iconAnchor: [0, 0], // 後で位置を調整
+          });
+          state.planning.costTooltip = L.marker(e.latlng, {
+            icon: state.planning.costTooltip,
+          }).addTo(map);
+        }
       });
 
       map.on("mousemove", function (e) {
@@ -1724,6 +2099,27 @@
             state.planning.points[0],
             snappedPoint,
           ]);
+
+          // コストツールチップの更新
+          if (state.planning.costTooltip) {
+            var len = state.planning.points[0].distanceTo(snappedPoint);
+            var cost = 0;
+            if (state.planning.type === "station") {
+              cost =
+                CONFIG.costs.station.base + CONFIG.costs.station.perMeter * len;
+            } else {
+              cost = CONFIG.costs[state.planning.type].perMeter * len;
+            }
+            state.planning.costTooltip.setLatLng(e.latlng);
+            state.planning.costTooltip
+              .getIcon()
+              .options.html =
+              "長さ: " +
+              len.toFixed(1) +
+              "m<br>コスト: $" +
+              Math.round(cost).toLocaleString();
+            state.planning.costTooltip.redraw(); // アイコンのHTML変更を反映
+          }
         }
       });
 
@@ -1758,6 +2154,7 @@
             } else {
               ui.showMessage(
                 "線路は2つの異なる点で構成する必要があります。",
+                "warning",
                 false,
                 3000
               );
@@ -1768,6 +2165,11 @@
               state.planning.points = [];
               ui.confirmBuildButton.disabled = true;
               ui.confirmBuildButton.textContent = "建設確定";
+              // コストツールチップを削除
+              if (state.planning.costTooltip) {
+                map.removeLayer(state.planning.costTooltip);
+                state.planning.costTooltip = null;
+              }
               return;
             }
           }
@@ -1785,6 +2187,12 @@
           ui.confirmBuildButton.textContent =
             "建設確定 ($" + Math.round(cost).toLocaleString() + ")";
           ui.confirmBuildButton.disabled = state.assets < cost;
+
+          // コストツールチップを削除
+          if (state.planning.costTooltip) {
+            map.removeLayer(state.planning.costTooltip);
+            state.planning.costTooltip = null;
+          }
         }
       });
 
@@ -1857,11 +2265,11 @@
       // --- CONFIRM BUILD (TRACK/STATION): 建設の確定ロジック ---
       function confirmBuild() {
         if (!state.planning.type) {
-          ui.showMessage("建設モードが選択されていません。");
+          ui.showMessage("建設モードが選択されていません。", "warning");
           return;
         }
         if (state.planning.points.length < 2) {
-          ui.showMessage("建設点が不足しています。", false, 3000);
+          ui.showMessage("建設点が不足しています。", "warning", false, 3000);
           return;
         }
 
@@ -1889,7 +2297,7 @@
         }
 
         if (state.assets < actualCost) {
-          ui.showMessage("資金不足: 建設できません。", false, 5000);
+          ui.showMessage("資金不足: 建設できません。", "error", false, 5000);
           return;
         }
 
@@ -1900,17 +2308,22 @@
           var stationName = "無名駅" + (state.stations.length + 1);
           var stationCenter = points[0];
 
-          var platformLayer = L.polyline(points, {
-            className: "station-platform",
-            color: "#d9534f",
-            weight: 6,
-            opacity: 0.9,
+          // 駅ホーム本体レイヤー
+          var platformBodyLayer = L.polyline(points, {
+            className: "station-platform-body",
             id: stationId,
           }).addTo(map);
+          // 駅ホーム縁レイヤー
+          var platformEdgeLayer = L.polyline(points, {
+            className: "station-platform-edge",
+            id: stationId,
+          }).addTo(map);
+
           var marker = L.marker(stationCenter, {
             icon: L.divIcon({
               className: "station-marker",
               iconSize: [16, 16],
+              html: "", // 路線設定モードで数字が入る
             }),
             id: stationId,
           }).addTo(map);
@@ -1921,13 +2334,25 @@
             latlng: stationCenter,
             latlngs: points,
             platformLength: len,
-            layer: platformLayer,
+            bodyLayer: platformBodyLayer, // レイヤーを分割
+            edgeLayer: platformEdgeLayer, // レイヤーを分割
             marker: marker,
             revenueMultiplier: 1.0, // 初期値は1.0、後で人口密度で更新
             passengersWaiting: [], // 新規追加: 駅で待機中の乗客リスト
-            maxWaitingPassengers: Math.floor(len * CONFIG.maxWaitingPassengersPerMeterOfPlatform), // 新規追加
+            maxWaitingPassengers: Math.floor(
+              len * CONFIG.maxWaitingPassengersPerMeterOfPlatform
+            ), // 新規追加
           };
           state.stations.push(newStation);
+
+          // 駅名ツールチップをバインド
+          marker.bindTooltip(newStation.name, {
+            permanent: true,
+            direction: "top",
+            className: "station-name-tooltip",
+          });
+          marker.getTooltip()._container.style.display =
+            map.getZoom() >= 13 ? "block" : "none"; // ズームレベルに応じて表示/非表示
 
           marker.on("click", function (e) {
             e.originalEvent.stopPropagation();
@@ -1936,34 +2361,25 @@
               handleStationClickForLineBuilding(currentId);
             } else if (state.demolitionMode) {
               selectForDemolition("station", currentId);
+            } else {
+              // 修正2: 通常クリック時にポップアップを開く
+              e.target.openPopup();
             }
           });
-          platformLayer.on("click", function (e) {
+          platformBodyLayer.on("click", function (e) {
             e.originalEvent.stopPropagation();
             var currentId = e.target.options.id;
             if (state.demolitionMode) {
               selectForDemolition("station", currentId);
             }
           });
-
-          // ポップアップは地名APIと人口密度データが揃ってから更新
-          // 初期ポップアップを設定。人口密度取得後に更新される。
-          marker.bindPopup(
-            "<b>" +
-              newStation.name +
-              "</b><br>ID: " +
-              newStation.id +
-              "<br>プラットフォーム長: " +
-              newStation.platformLength.toFixed(1) +
-              "m<br>収益倍率: " +
-              newStation.revenueMultiplier.toFixed(2) +
-              "<br>待機乗客: " +
-              newStation.passengersWaiting.length +
-              "人" +
-              "<br>最大待機乗客: " +
-              newStation.maxWaitingPassengers +
-              "人"
-          );
+          platformEdgeLayer.on("click", function (e) {
+            e.originalEvent.stopPropagation();
+            var currentId = e.target.options.id;
+            if (state.demolitionMode) {
+              selectForDemolition("station", currentId);
+            }
+          });
 
           fetch(
             "https://nominatim.openstreetmap.org/reverse?format=json&lat=" +
@@ -1977,7 +2393,7 @@
             })
             .then(function (data) {
               var resolvedName =
-                "無名駅 (" + stationCenter.lat.toFixed(4) + ")";
+                "無名駅" + (stationCenter.lat.toFixed(4) + ")");
               // var revenueMultiplier = 1.0; // 既存の地名APIからの収益倍率ロジックは削除
 
               if (data && data.address) {
@@ -2003,6 +2419,7 @@
 
               // 人口密度に基づいて収益倍率を設定
               setStationRevenueMultiplier(newStation);
+              newStation.marker.getTooltip().setContent(newStation.name); // ツールチップも更新
 
               ui.showMessage(
                 resolvedName +
@@ -2011,6 +2428,7 @@
                   ", $" +
                   Math.round(actualCost).toLocaleString() +
                   ")",
+                "success",
                 false,
                 2500
               );
@@ -2021,6 +2439,7 @@
               // 地名APIが失敗しても人口密度は設定する
               newStation.name = "無名駅 (" + stationCenter.lat.toFixed(4) + ")";
               setStationRevenueMultiplier(newStation);
+              newStation.marker.getTooltip().setContent(newStation.name); // ツールチップも更新
               ui.showMessage(
                 "地名取得失敗: " +
                   newStation.name +
@@ -2029,6 +2448,7 @@
                   ", $" +
                   Math.round(actualCost).toLocaleString() +
                   ")",
+                "warning",
                 false,
                 2500
               );
@@ -2036,24 +2456,33 @@
         } else {
           // 線路建設
           var trackId = generateUniqueId();
-          var trackLayer = L.polyline(points, {
-            className: "track-line track-" + type,
-            weight: 4,
-            opacity: 0.9,
+          var railLayer = L.polyline(points, {
+            className: "track-rail track-" + type + "-rail",
             id: trackId,
           }).addTo(map);
-          // CSSクラスでの色付けに合わせるため、styleを直接指定しない
+          var sleeperLayer = L.polyline(points, {
+            className: "track-sleeper track-" + type + "-sleeper",
+            id: trackId,
+          }).addTo(map);
+
           state.tracks.push({
             id: trackId,
             latlngs: points,
-            layer: trackLayer,
+            railLayer: railLayer, // レイヤーを分割
+            sleeperLayer: sleeperLayer, // レイヤーを分割
             type: type,
           });
 
-          trackLayer.on("click", function (e) {
+          railLayer.on("click", function (e) {
             e.originalEvent.stopPropagation();
             if (state.demolitionMode) {
               selectForDemolition("track", this.options.id);
+            }
+          });
+          sleeperLayer.on("click", function (e) {
+            e.originalEvent.stopPropagation();
+            if (state.demolitionMode) {
+              selectForDemolition("track", e.target.options.id);
             }
           });
 
@@ -2062,6 +2491,7 @@
               "を建設しました！ ($" +
               Math.round(actualCost).toLocaleString() +
               ")",
+            "success",
             false,
             2000
           );
@@ -2074,9 +2504,22 @@
         state.planning.points = [];
         state.planning.type = null;
         map.dragging.enable();
+        map.getContainer().classList.remove("build-mode-cursor"); // カーソルを元に戻す
         ui.resetBuildModeActive();
         ui.updateFinance();
       }
+
+      // ズームレベルに応じて駅名ツールチップの表示/非表示を切り替える
+      map.on("zoomend", function () {
+        var currentZoom = map.getZoom();
+        for (var i = 0; i < state.stations.length; i++) {
+          var station = state.stations[i];
+          if (station.marker && station.marker.getTooltip()) {
+            station.marker.getTooltip()._container.style.display =
+              currentZoom >= 13 ? "block" : "none";
+          }
+        }
+      });
 
       // --- TRAIN SHOP LOGIC: 列車ショップの機能 ---
 
@@ -2092,11 +2535,11 @@
           return t.id === state.selectedTrainToBuyId;
         });
         if (!trainToBuyConfig) {
-          ui.showMessage("列車が選択されていません。");
+          ui.showMessage("列車が選択されていません。", "warning");
           return;
         }
         if (state.assets < trainToBuyConfig.cost) {
-          ui.showMessage("資金不足: 列車を購入できません。", false, 5000);
+          ui.showMessage("資金不足: 列車を購入できません。", "error", false, 5000);
           return;
         }
 
@@ -2127,7 +2570,7 @@
         state.trains.push(newTrain);
 
         ui.updateFinance();
-        ui.showMessage(trainToBuyConfig.name + "を購入しました！", false, 2000);
+        ui.showMessage(trainToBuyConfig.name + "を購入しました！", "success", false, 2000);
         state.selectedTrainToBuyId = null;
         ui.renderTrainShop();
       }
@@ -2165,7 +2608,7 @@
         var lineId = ui.lineSelectForAssignment.value;
 
         if (!trainId || !lineId) {
-          ui.showMessage("列車と路線を選択してください。");
+          ui.showMessage("列車と路線を選択してください。", "warning");
           return;
         }
 
@@ -2175,11 +2618,11 @@
         var line = getLineById(lineId);
 
         if (!train || !line) {
-          ui.showMessage("無効な列車または路線です。");
+          ui.showMessage("無効な列車または路線です。", "error");
           return;
         }
         if (line.segments.length === 0) {
-          ui.showMessage("選択された路線には有効なセグメントがありません。");
+          ui.showMessage("選択された路線には有効なセグメントがありません。", "warning");
           return;
         }
 
@@ -2236,6 +2679,7 @@
 
         ui.showMessage(
           train.name + "を路線 " + line.name + "に割り当てました。",
+          "success",
           false,
           2000
         );
@@ -2262,6 +2706,7 @@
         }
         ui.showMessage(
           "路線設定モードを開始しました。駅をクリックして路線に追加してください。",
+          "info",
           true
         );
         ui.setLineBuildModeActive(true);
@@ -2292,12 +2737,13 @@
           removeStationFromLineBuilding(stationId);
           ui.showMessage(
             station.name + "を路線から削除しました。",
+            "info",
             false,
-1500
+            1500
           );
         } else {
           state.selectedStationsForLine.push(stationId);
-          ui.showMessage(station.name + "を路線に追加しました。", false, 1500);
+          ui.showMessage(station.name + "を路線に追加しました。", "info", false, 1500);
           if (station.marker && station.marker._icon) {
             station.marker._icon.classList.add("selected-for-line");
           }
@@ -2305,6 +2751,15 @@
 
         ui.updateSelectedStationsForLine();
         updateLineGhost();
+
+        // 駅マーカーの番号を更新
+        for (var i = 0; i < state.stations.length; i++) {
+          var s = state.stations[i];
+          var idx = state.selectedStationsForLine.indexOf(s.id);
+          if (s.marker && s.marker.getElement()) {
+            s.marker.getElement().innerHTML = idx > -1 ? idx + 1 : "";
+          }
+        }
       }
 
       /**
@@ -2320,9 +2775,19 @@
         var station = getStationById(stationIdToRemove);
         if (station && station.marker && station.marker._icon) {
           station.marker._icon.classList.remove("selected-for-line");
+          station.marker.getElement().innerHTML = ""; // 番号をクリア
         }
         ui.updateSelectedStationsForLine();
         updateLineGhost();
+
+        // 残りの駅の番号を更新
+        for (var i = 0; i < state.stations.length; i++) {
+          var s = state.stations[i];
+          var idx = state.selectedStationsForLine.indexOf(s.id);
+          if (s.marker && s.marker.getElement()) {
+            s.marker.getElement().innerHTML = idx > -1 ? idx + 1 : "";
+          }
+        }
       }
 
       /** 路線設定中の仮ポリライン（ゴースト）を更新する。 */
@@ -2364,6 +2829,7 @@
                   " と " +
                   endStation.name +
                   " 間に接続された線路がありません。",
+                "warning",
                 false,
                 4000
               );
@@ -2383,7 +2849,7 @@
       /** 路線設定を確定する。 */
       function confirmLineBuilding() {
         if (state.selectedStationsForLine.length < 2) {
-          ui.showMessage("路線には2つ以上の駅が必要です。");
+          ui.showMessage("路線には2つ以上の駅が必要です。", "warning");
           return;
         }
 
@@ -2430,6 +2896,7 @@
                   "から" +
                   endStation.name +
                   "への経路が見つかりませんでした。路線を作成できません。",
+                "error",
                 false,
                 5000
               );
@@ -2446,7 +2913,7 @@
           CONFIG.costs.line.base +
           CONFIG.costs.line.perMeter * totalLineDistance;
         if (state.assets < actualLineCost) {
-          ui.showMessage("資金不足: 路線を確定できません。", false, 5000);
+          ui.showMessage("資金不足: 路線を確定できません。", "error", false, 5000);
           return;
         }
 
@@ -2492,6 +2959,7 @@
             "m, コスト $" +
             Math.round(actualLineCost).toLocaleString() +
             ")",
+          "success",
           false,
           2000
         );
@@ -2507,6 +2975,7 @@
           var station = getStationById(state.selectedStationsForLine[i]);
           if (station && station.marker && station.marker._icon) {
             station.marker._icon.classList.remove("selected-for-line");
+            station.marker.getElement().innerHTML = ""; // 番号をクリア
           }
         }
         state.selectedStationsForLine = [];
@@ -2514,7 +2983,7 @@
           map.removeLayer(state.currentLineGhost);
           state.currentLineGhost = null;
         }
-        ui.showMessage("路線設定をキャンセルしました。");
+        ui.showMessage("路線設定をキャンセルしました。", "info");
         ui.setLineBuildModeActive(false);
         ui.updateSelectedStationsForLine();
         map.dragging.enable();
@@ -2539,6 +3008,7 @@
         state.selectedForDemolition = null;
         ui.showMessage(
           "解体モード: 解体したい線路や駅をクリックしてください。",
+          "info",
           true
         );
         ui.setDemolitionModeActive(true);
@@ -2572,10 +3042,29 @@
               ? getTrackById(prevId)
               : getStationById(prevId);
           if (prevObj) {
-            if (prevObj.layer && prevObj.layer._path)
-              prevObj.layer._path.classList.remove("selected-for-demolition");
-            if (prevObj.marker && prevObj.marker._icon)
-              prevObj.marker._icon.classList.remove("selected-for-demolition");
+            if (prevType === "track") {
+              if (prevObj.railLayer && prevObj.railLayer._path)
+                prevObj.railLayer._path.classList.remove(
+                  "selected-for-demolition"
+                );
+              if (prevObj.sleeperLayer && prevObj.sleeperLayer._path)
+                prevObj.sleeperLayer._path.classList.remove(
+                  "selected-for-demolition"
+                );
+            } else if (prevType === "station") {
+              if (prevObj.bodyLayer && prevObj.bodyLayer._path)
+                prevObj.bodyLayer._path.classList.remove(
+                  "selected-for-demolition"
+                );
+              if (prevObj.edgeLayer && prevObj.edgeLayer._path)
+                prevObj.edgeLayer._path.classList.remove(
+                  "selected-for-demolition"
+                );
+              if (prevObj.marker && prevObj.marker._icon)
+                prevObj.marker._icon.classList.remove(
+                  "selected-for-demolition"
+                );
+            }
           }
         }
 
@@ -2584,10 +3073,27 @@
         var currentObj =
           type === "track" ? getTrackById(id) : getStationById(id);
         if (currentObj) {
-          if (currentObj.layer && currentObj.layer._path)
-            currentObj.layer._path.classList.add("selected-for-demolition");
-          if (currentObj.marker && currentObj.marker._icon)
-            currentObj.marker._icon.classList.add("selected-for-demolition");
+          if (type === "track") {
+            if (currentObj.railLayer && currentObj.railLayer._path)
+              currentObj.railLayer._path.classList.add(
+                "selected-for-demolition"
+              );
+            if (currentObj.sleeperLayer && currentObj.sleeperLayer._path)
+              currentObj.sleeperLayer._path.classList.add(
+                "selected-for-demolition"
+              );
+          } else if (type === "station") {
+            if (currentObj.bodyLayer && currentObj.bodyLayer._path)
+              currentObj.bodyLayer._path.classList.add(
+                "selected-for-demolition"
+              );
+            if (currentObj.edgeLayer && currentObj.edgeLayer._path)
+              currentObj.edgeLayer._path.classList.add(
+                "selected-for-demolition"
+              );
+            if (currentObj.marker && currentObj.marker._icon)
+              currentObj.marker._icon.classList.add("selected-for-demolition");
+          }
           ui.selectedDemolitionTargetDisplay.textContent =
             demolitionTargetDisplayMap[type](id);
         }
@@ -2597,7 +3103,7 @@
       /** 選択されたオブジェクトを解体する。 */
       function confirmDemolition() {
         if (!state.selectedForDemolition) {
-          ui.showMessage("解体するオブジェクトが選択されていません。");
+          ui.showMessage("解体するオブジェクトが選択されていません。", "warning");
           return;
         }
 
@@ -2613,9 +3119,11 @@
             return;
           }
 
-          map.removeLayer(state.tracks[trackIndex].layer);
+          var trackToDemolish = state.tracks[trackIndex];
+          map.removeLayer(trackToDemolish.railLayer);
+          map.removeLayer(trackToDemolish.sleeperLayer);
           state.tracks.splice(trackIndex, 1);
-          ui.showMessage("線路を解体しました。", false, 2000);
+          ui.showMessage("線路を解体しました。", "success", false, 2000);
 
           // この線路を使用していた可能性のある全ての路線を再検証・削除
           var affectedLines = state.lines.filter(function (line) {
@@ -2644,11 +3152,16 @@
           }
           var stationToDemolish = state.stations[stationIndex];
 
-          map.removeLayer(stationToDemolish.layer);
+          map.removeLayer(stationToDemolish.bodyLayer);
+          map.removeLayer(stationToDemolish.edgeLayer);
           map.removeLayer(stationToDemolish.marker);
+          if (stationToDemolish.marker.getTooltip()) {
+            map.removeLayer(stationToDemolish.marker.getTooltip());
+          } // ツールチップも削除
           state.stations.splice(stationIndex, 1);
           ui.showMessage(
             stationToDemolish.name + "を解体しました。",
+            "success",
             false,
             2000
           );
@@ -2704,6 +3217,7 @@
         state.lines.splice(lineIndex, 1);
         ui.showMessage(
           "路線 " + lineToRemove.name + " が削除されました。",
+          "info",
           false,
           3000
         );
@@ -2717,15 +3231,32 @@
           var id = state.selectedForDemolition.id;
           var obj = type === "track" ? getTrackById(id) : getStationById(id);
           if (obj) {
-            if (obj.layer && obj.layer._path)
-              obj.layer._path.classList.remove("selected-for-demolition");
-            if (obj.marker && obj.marker._icon)
-              obj.marker._icon.classList.remove("selected-for-demolition");
+            if (type === "track") {
+              if (obj.railLayer && obj.railLayer._path)
+                obj.railLayer._path.classList.remove(
+                  "selected-for-demolition"
+                );
+              if (obj.sleeperLayer && obj.sleeperLayer._path)
+                obj.sleeperLayer._path.classList.remove(
+                  "selected-for-demolition"
+                );
+            } else if (type === "station") {
+              if (obj.bodyLayer && obj.bodyLayer._path)
+                obj.bodyLayer._path.classList.remove(
+                  "selected-for-demolition"
+                );
+              if (obj.edgeLayer && obj.edgeLayer._path)
+                obj.edgeLayer._path.classList.remove(
+                  "selected-for-demolition"
+                );
+              if (obj.marker && obj.marker._icon)
+                obj.marker._icon.classList.remove("selected-for-demolition");
+            }
           }
         }
         state.demolitionMode = false;
         state.selectedForDemolition = null;
-        ui.showMessage("解体モードをキャンセルしました。");
+        ui.showMessage("解体モードをキャンセルしました。", "info");
         ui.setDemolitionModeActive(false);
         map.dragging.enable();
       }
@@ -2733,7 +3264,8 @@
       // --- TRAIN MOVEMENT LOGIC: 列車移動の計算と更新 ---
       /** 全列車の位置と状態を更新する。 */
       function updateTrains() {
-        var deltaTime = (CONFIG.updateInterval / 1000) * state.gameSpeedMultiplier; // 秒単位
+        var deltaTime =
+          (CONFIG.updateInterval / 1000) * state.gameSpeedMultiplier; // 秒単位
         var i;
 
         for (i = 0; i < state.trains.length; i++) {
@@ -2880,25 +3412,35 @@
                   station.revenueMultiplier // station変数名に変更
                 ).toLocaleString() + // ここも表示に合わせて変更
                 "の収益を得ました。",
+              "success",
               false,
               2000
             );
           }
 
           // --- 乗客の乗車処理 (最適化) ---
-          var availableCapacity = train.maxCapacity - train.currentPassengers.length;
+          var availableCapacity =
+            train.maxCapacity - train.currentPassengers.length;
           var passengersBoardedCount = 0;
           var passengersToBoard = [];
           var currentLineStationIds = line.stationIds;
-          var nextStationId = null;
+          var nextStationId = null; // 列車が次に向かう駅のID
 
-          if (
-            train.direction === 1 &&
-            train.currentSegmentIndex < line.stationIds.length - 1
-          ) {
-            nextStationId = line.stationIds[train.currentSegmentIndex + 1];
-          } else if (train.direction === -1 && train.currentSegmentIndex > 0) {
-            nextStationId = line.stationIds[train.currentSegmentIndex - 1];
+          // 現在停車している駅の路線のインデックスを取得
+          var arrivedStationIndexInLine = currentLineStationIds.indexOf(arrivedStationId);
+
+          if (arrivedStationIndexInLine !== -1) {
+              if (train.direction === 1) {
+                  // 順方向で到着した場合、次に向かう駅は路線の次の駅
+                  if (arrivedStationIndexInLine + 1 < currentLineStationIds.length) {
+                      nextStationId = currentLineStationIds[arrivedStationIndexInLine + 1];
+                  }
+              } else { // train.direction === -1 (逆方向)
+                  // 逆方向で到着した場合、次に向かう駅は路線の前の駅
+                  if (arrivedStationIndexInLine - 1 >= 0) {
+                      nextStationId = currentLineStationIds[arrivedStationIndexInLine - 1];
+                  }
+              }
           }
 
           var tempPassengersWaiting = []; // 駅に残る乗客を一時的に保持する配列
@@ -2906,7 +3448,10 @@
           // 1. 次の停車駅を目的地とする乗客を優先的に乗せる
           for (var i = 0; i < station.passengersWaiting.length; i++) {
             var p = station.passengersWaiting[i];
-            if (passengersBoardedCount < availableCapacity && p.destinationStationId === nextStationId) {
+            if (
+              passengersBoardedCount < availableCapacity &&
+              p.destinationStationId === nextStationId
+            ) {
               passengersToBoard.push(p);
               passengersBoardedCount++;
             } else {
@@ -2920,7 +3465,10 @@
           // 2. この路線の他の駅を目的地とする乗客を乗せる
           for (var i = 0; i < station.passengersWaiting.length; i++) {
             var p = station.passengersWaiting[i];
-            if (passengersBoardedCount < availableCapacity && currentLineStationIds.includes(p.destinationStationId)) {
+            if (
+              passengersBoardedCount < availableCapacity &&
+              currentLineStationIds.includes(p.destinationStationId)
+            ) {
               passengersToBoard.push(p);
               passengersBoardedCount++;
             } else {
@@ -2929,19 +3477,8 @@
           }
           station.passengersWaiting = tempPassengersWaiting; // 処理済みの乗客を削除し、残りを更新
 
-          tempPassengersWaiting = []; // リセット
-
-          // 3. 最後に、その他の駅を目的地とする乗客を乗せる（この路線上ではないが、どこかの駅へ向かう乗客）
-          for (var i = 0; i < station.passengersWaiting.length; i++) {
-            var p = station.passengersWaiting[i];
-            if (passengersBoardedCount < availableCapacity) {
-              passengersToBoard.push(p);
-              passengersBoardedCount++;
-            } else {
-              tempPassengersWaiting.push(p);
-            }
-          }
-          station.passengersWaiting = tempPassengersWaiting; // 最終的に駅に残る乗客
+          // 3. 以前の「その他の駅を目的地とする乗客」を乗せるロジックを削除しました。
+          //    これにより、列車は運行している路線上の駅を目的地とする乗客のみを乗せるようになります。
 
           Array.prototype.push.apply(train.currentPassengers, passengersToBoard);
 
@@ -2951,6 +3488,7 @@
                 "人の乗客が" +
                 station.name +
                 "で乗車しました。",
+              "info",
               false,
               2000
             );
@@ -2964,12 +3502,14 @@
             setStationRevenueMultiplier(station); // 駅の待機乗客数も更新されるためポップアップを更新
           }, CONFIG.trainStopDuration / state.gameSpeedMultiplier); // 倍速適用
         } else {
-          if (station) { // station変数名に変更
+          if (station) {
+            // station変数名に変更
             ui.showMessage(
               train.name +
                 "は" +
                 station.name + // station変数名に変更
                 "を通過します(プラットフォーム長不足または停車しない駅)。",
+              "warning",
               false,
               3000
             );
@@ -3010,38 +3550,49 @@
           // 輸送能力が過剰になると、供給係数の増加が鈍化、あるいは頭打ちになるように調整
           var supplyFactor = 1.0;
           if (totalLineCarsAtStation > 0) {
-            var optimalTotalCars = linesServingStation.length * CONFIG.optimalCarsPerLineSegment;
-            if (optimalTotalCars === 0) optimalTotalCars = CONFIG.optimalCarsPerLineSegment; // 路線がない場合のゼロ除算対策
+            var optimalTotalCars =
+              linesServingStation.length * CONFIG.optimalCarsPerLineSegment;
+            if (optimalTotalCars === 0)
+              optimalTotalCars = CONFIG.optimalCarsPerLineSegment; // 路線がない場合のゼロ除算対策
 
-            // 対数関数で増加を鈍化させ、最大値を設定
-            supplyFactor = 1 + Math.log(1 + totalLineCarsAtStation / optimalTotalCars) * 0.8;
-            supplyFactor = Math.min(supplyFactor, 2.5); // 最大2.5倍に制限
+            // ★修正4: supplyFactorの計算式を調整し、最大倍率を2.5から3.0に引き上げました
+            supplyFactor =
+              1 + Math.log(1 + totalLineCarsAtStation / optimalTotalCars) * 1.0; // 0.8を1.0に変更
+            supplyFactor = Math.min(supplyFactor, 3.0); // 最大3.0倍に制限
           }
 
           var actualCount = Math.floor(baseCount * supplyFactor);
 
           // 駅の最大待機乗客数を超えないように生成量を制限
-          var availableSlots = station.maxWaitingPassengers - station.passengersWaiting.length;
+          var availableSlots =
+            station.maxWaitingPassengers - station.passengersWaiting.length;
           actualCount = Math.min(actualCount, availableSlots);
           actualCount = Math.max(0, actualCount); // マイナスにならないように
 
-
           for (var k = 0; k < actualCount; k++) {
             var destinationStation = null;
-            var attempts = 0;
-            while (
-              !destinationStation &&
-              attempts < CONFIG.passengerMaxDestinationAttempts
-            ) {
-              var randomIndex = Math.floor(Math.random() * state.stations.length);
-              var potentialDestination = state.stations[randomIndex];
-              if (potentialDestination.id !== station.id) {
-                destinationStation = potentialDestination;
-              }
-              attempts++;
+            var possibleDestinationStations = [];
+
+            // 修正箇所: 現在の駅が属する路線の中からランダムに1つ選び、その路線上の他の駅を目的地とする
+            if (linesServingStation.length > 0) {
+                var selectedLine = linesServingStation[Math.floor(Math.random() * linesServingStation.length)];
+                for (var m = 0; m < selectedLine.stationIds.length; m++) {
+                    var destId = selectedLine.stationIds[m];
+                    if (destId !== station.id) { // 自分自身は目的地にしない
+                        possibleDestinationStations.push(destId);
+                    }
+                }
             }
 
-            if (destinationStation) {
+            if (possibleDestinationStations.length > 0) {
+                // 接続可能な駅の中からランダムに選択
+                var randomIndex = Math.floor(Math.random() * possibleDestinationStations.length);
+                destinationStation = getStationById(possibleDestinationStations[randomIndex]);
+            }
+            // else: この駅がどの路線にも属していない、または単独の駅である場合、乗客は生成されない。
+            // これにより、無駄な乗客が減り、降車率が上がる。
+
+            if (destinationStation) { // destinationStation が null でない場合のみ乗客を追加
               station.passengersWaiting.push({
                 id: generateUniqueId(),
                 destinationStationId: destinationStation.id,
@@ -3053,6 +3604,14 @@
             setStationRevenueMultiplier(station); // これでポップアップも更新される
           }
         }
+      }
+
+      /**
+       * ゲーム内時間を更新する。
+       */
+      function updateGameTime() {
+        state.gameTime += CONFIG.gameTimeInterval * state.gameSpeedMultiplier * CONFIG.gameTimeScale;
+        ui.updateGameTimeDisplay();
       }
 
       /**
@@ -3069,6 +3628,9 @@
         if (state.passengerGenerationIntervalId) {
           clearInterval(state.passengerGenerationIntervalId);
         }
+        if (state.gameTimeIntervalId) {
+          clearInterval(state.gameTimeIntervalId);
+        }
 
         // 新しいインターバルを設定
         state.trainUpdateIntervalId = setInterval(
@@ -3078,6 +3640,10 @@
         state.passengerGenerationIntervalId = setInterval(
           generatePassengersAtStations,
           CONFIG.passengerGenerationInterval / state.gameSpeedMultiplier
+        );
+        state.gameTimeIntervalId = setInterval(
+          updateGameTime,
+          CONFIG.gameTimeInterval / state.gameSpeedMultiplier
         );
 
         // UIのボタンのアクティブ状態を更新
@@ -3091,11 +3657,11 @@
             speedButtons[i].classList.remove("active");
           }
         }
-        ui.showMessage("ゲーム速度を " + multiplier + "倍に設定しました。", false, 1500);
+        ui.showMessage("ゲーム速度を " + multiplier + "倍に設定しました。", "info", false, 1500);
       }
 
       // --- RENDER TRAINS: マップ上での列車の描画とアニメーション ---
-      /** 全列車の車両をマップ上に描画または更新する。 */
+      /** 全列車の位置と状態を更新する。 */
       function renderTrains() {
         var i, j;
         for (i = 0; i < state.trains.length; i++) {
@@ -3181,12 +3747,17 @@
             var iconSize = [maxDim, maxDim];
             var rotation = carHeading - 90;
 
+            // 先頭車両に進行方向矢印を追加
+            var carBodyClass = j === 0 ? "train-car-body front-car" : "train-car-body";
+
             if (!train.carMarkers[j]) {
               // 初回作成
               var carIcon = L.divIcon({
                 className: "train-car-container",
                 html:
-                  '<div class="train-car-body" style="background-color:' +
+                  '<div class="' +
+                  carBodyClass +
+                  '" style="background-color:' +
                   train.color +
                   '; width:' +
                   carLengthPx +
@@ -3196,7 +3767,10 @@
                 iconSize: iconSize,
                 iconAnchor: [maxDim / 2, maxDim / 2],
               });
-              train.carMarkers[j] = L.rotatedMarker(carLatLng, { icon: carIcon, rotation: rotation }).addTo(map);
+              train.carMarkers[j] = L.rotatedMarker(carLatLng, {
+                icon: carIcon,
+                rotation: rotation,
+              }).addTo(map);
             } else {
               // 更新
               train.carMarkers[j].setLatLng(carLatLng);
@@ -3205,18 +3779,22 @@
               // アイコンサイズと車両サイズを動的に更新
               var iconElement = train.carMarkers[j].getElement();
               if (iconElement) {
-                var bodyElement = iconElement.querySelector('.train-car-body');
+                var bodyElement = iconElement.querySelector(".train-car-body");
                 if (bodyElement) {
-                  bodyElement.style.width = carLengthPx + 'px';
-                  bodyElement.style.height = carWidthPx + 'px';
+                  bodyElement.style.width = carLengthPx + "px";
+                  bodyElement.style.height = carWidthPx + "px";
+                  bodyElement.className = carBodyClass; // クラスも更新
                 }
                 // L.divIconのiconSizeは直接変更できないため、新しいアイコンをセットし直す
                 // ただし、これはコストが高いので、アイコンサイズが大きく変動しない場合は省略可能
                 // 今回は車両サイズが動的に変わるため、正確性を優先して再設定
-                train.carMarkers[j].setIcon(L.divIcon({
+                train.carMarkers[j].setIcon(
+                  L.divIcon({
                     className: "train-car-container",
                     html:
-                      '<div class="train-car-body" style="background-color:' +
+                      '<div class="' +
+                      carBodyClass +
+                      '" style="background-color:' +
                       train.color +
                       '; width:' +
                       carLengthPx +
@@ -3225,20 +3803,32 @@
                       'px;"></div>',
                     iconSize: iconSize,
                     iconAnchor: [maxDim / 2, maxDim / 2],
-                }));
-            }
+                  })
+                );
+              }
             }
 
             // 先頭車両にのみポップアップを設定/更新
             if (j === 0) {
-              var popupContent = `<b>${train.name}</b><br>` +
-                  `路線: ${line.name}<br>` +
-                  `速度: ${train.speed}km/h<br>` +
-                  `乗客: ${train.currentPassengers.length}/${train.maxCapacity}人`;
+              var popupContent =
+                "<b>" +
+                train.name +
+                "</b><br>" +
+                "路線: " +
+                line.name +
+                "<br>" +
+                "速度: " +
+                train.speed +
+                "km/h<br>" +
+                "乗客: " +
+                train.currentPassengers.length +
+                "/" +
+                train.maxCapacity +
+                "人";
               if (!train.carMarkers[j].getPopup()) {
-                  train.carMarkers[j].bindPopup(popupContent);
+                train.carMarkers[j].bindPopup(popupContent);
               } else {
-                  train.carMarkers[j].getPopup().setContent(popupContent);
+                train.carMarkers[j].getPopup().setContent(popupContent);
               }
             }
           }
@@ -3329,6 +3919,7 @@
           }),
           currentLineColorIndex: state.currentLineColorIndex,
           gameSpeedMultiplier: state.gameSpeedMultiplier,
+          gameTime: state.gameTime, // ゲーム時間を保存
         };
       }
 
@@ -3347,15 +3938,15 @@
         });
         // train.carMarkersも明示的にクリア
         for (var i = 0; i < state.trains.length; i++) {
-            var train = state.trains[i];
-            if (train.carMarkers) {
-                for (var j = 0; j < train.carMarkers.length; j++) {
-                    if (train.carMarkers[j] && map.hasLayer(train.carMarkers[j])) {
-                        map.removeLayer(train.carMarkers[j]);
-                    }
-                }
+          var train = state.trains[i];
+          if (train.carMarkers) {
+            for (var j = 0; j < train.carMarkers.length; j++) {
+              if (train.carMarkers[j] && map.hasLayer(train.carMarkers[j])) {
+                map.removeLayer(train.carMarkers[j]);
+              }
             }
-            train.carMarkers = []; // クリア
+          }
+          train.carMarkers = []; // クリア
         }
       }
 
@@ -3366,12 +3957,12 @@
       var encryptionKey = "RailBuilderSecretKey2023"; // 適当な鍵
 
       function xorEncryptDecrypt(data, key) {
-          var output = "";
-          for (var i = 0; i < data.length; i++) {
-              var charCode = data.charCodeAt(i) ^ key.charCodeAt(i % key.length);
-              output += String.fromCharCode(charCode);
-          }
-          return output;
+        var output = "";
+        for (var i = 0; i < data.length; i++) {
+          var charCode = data.charCodeAt(i) ^ key.charCodeAt(i % key.length);
+          output += String.fromCharCode(charCode);
+        }
+        return output;
       }
 
       /**
@@ -3381,7 +3972,7 @@
        */
       function loadGameFromObject(loadedState) {
         if (!loadedState) {
-          ui.showMessage("無効なゲームデータです。", false, 3000);
+          ui.showMessage("無効なゲームデータです。", "error", false, 3000);
           return false;
         }
 
@@ -3394,7 +3985,7 @@
           stations: [],
           lines: [],
           trains: [],
-          planning: { type: null, points: [], ghost: null },
+          planning: { type: null, points: [], ghost: null, costTooltip: null },
           lineBuildingMode: false,
           selectedStationsForLine: [],
           currentLineGhost: null,
@@ -3406,6 +3997,8 @@
           gameSpeedMultiplier: loadedState.gameSpeedMultiplier || 1,
           trainUpdateIntervalId: null,
           passengerGenerationIntervalId: null,
+          gameTime: loadedState.gameTime || 0, // ゲーム時間をロード
+          gameTimeIntervalId: null,
         };
 
         var i;
@@ -3414,22 +4007,34 @@
         for (i = 0; i < loadedState.tracks.length; i++) {
           var tData = loadedState.tracks[i];
           var latlngs = deserializeLatLngs(tData.latlngs);
-          var trackLayer = L.polyline(latlngs, {
-            className: "track-line track-" + tData.type,
-            weight: 4,
-            opacity: 0.9,
+
+          var railLayer = L.polyline(latlngs, {
+            className: "track-rail track-" + tData.type + "-rail",
             id: tData.id,
           }).addTo(map);
+          var sleeperLayer = L.polyline(latlngs, {
+            className: "track-sleeper track-" + tData.type + "-sleeper",
+            id: tData.id,
+          }).addTo(map);
+
           state.tracks.push({
             id: tData.id,
             latlngs: latlngs,
-            layer: trackLayer,
+            railLayer: railLayer,
+            sleeperLayer: sleeperLayer,
             type: tData.type,
           });
-          trackLayer.on("click", function (e) {
+
+          railLayer.on("click", function (e) {
             e.originalEvent.stopPropagation();
             if (state.demolitionMode) {
               selectForDemolition("track", this.options.id);
+            }
+          });
+          sleeperLayer.on("click", function (e) {
+            e.originalEvent.stopPropagation();
+            if (state.demolitionMode) {
+              selectForDemolition("track", e.target.options.id);
             }
           });
         }
@@ -3439,17 +4044,21 @@
           var sData = loadedState.stations[i];
           var latlng = deserializeLatLng(sData.latlng);
           var latlngs = deserializeLatLngs(sData.latlngs);
-          var platformLayer = L.polyline(latlngs, {
-            className: "station-platform",
-            color: "#d9534f",
-            weight: 6,
-            opacity: 0.9,
+
+          var platformBodyLayer = L.polyline(latlngs, {
+            className: "station-platform-body",
             id: sData.id,
           }).addTo(map);
+          var platformEdgeLayer = L.polyline(latlngs, {
+            className: "station-platform-edge",
+            id: sData.id,
+          }).addTo(map);
+
           var marker = L.marker(latlng, {
             icon: L.divIcon({
               className: "station-marker",
               iconSize: [16, 16],
+              html: "",
             }),
             id: sData.id,
           }).addTo(map);
@@ -3459,13 +4068,29 @@
             latlng: latlng,
             latlngs: latlngs,
             platformLength: sData.platformLength,
-            layer: platformLayer,
+            bodyLayer: platformBodyLayer,
+            edgeLayer: platformEdgeLayer,
             marker: marker,
             revenueMultiplier: sData.revenueMultiplier || 1.0,
             passengersWaiting: sData.passengersWaiting || [],
-            maxWaitingPassengers: sData.maxWaitingPassengers || Math.floor(sData.platformLength * CONFIG.maxWaitingPassengersPerMeterOfPlatform),
+            maxWaitingPassengers:
+              sData.maxWaitingPassengers ||
+              Math.floor(
+                sData.platformLength *
+                  CONFIG.maxWaitingPassengersPerMeterOfPlatform
+              ),
           };
           state.stations.push(newStation);
+
+          // 駅名ツールチップをバインド
+          marker.bindTooltip(newStation.name, {
+            permanent: true,
+            direction: "top",
+            className: "station-name-tooltip",
+          });
+          marker.getTooltip()._container.style.display =
+            map.getZoom() >= 13 ? "block" : "none";
+
           marker.on("click", function (e) {
             e.originalEvent.stopPropagation();
             var id = e.target.options.id;
@@ -3473,9 +4098,19 @@
               handleStationClickForLineBuilding(id);
             } else if (state.demolitionMode) {
               selectForDemolition("station", id);
+            } else {
+              // 修正4: 通常クリック時にポップアップを開く
+              e.target.openPopup();
             }
           });
-          platformLayer.on("click", function (e) {
+          platformBodyLayer.on("click", function (e) {
+            e.originalEvent.stopPropagation();
+            var id = e.target.options.id;
+            if (state.demolitionMode) {
+              selectForDemolition("station", id);
+            }
+          });
+          platformEdgeLayer.on("click", function (e) {
             e.originalEvent.stopPropagation();
             var id = e.target.options.id;
             if (state.demolitionMode) {
@@ -3539,6 +4174,7 @@
         }
 
         ui.updateFinance();
+        ui.updateGameTimeDisplay(); // ゲーム時間も更新
         ui.renderTrainShop();
         renderTrains();
         setGameSpeed(state.gameSpeedMultiplier); // ロード後にゲーム速度を再設定
@@ -3553,38 +4189,50 @@
           var encrypted = xorEncryptDecrypt(jsonString, encryptionKey); // 暗号化
           var compressedAndEncrypted = LZString.compressToBase64(encrypted); // 圧縮
 
-          localStorage.setItem(
-            "railBuilderSaveGame",
-            compressedAndEncrypted
-          );
-          ui.showMessage("ゲームをセーブしました！ (ローカル)", false, 2000);
+          localStorage.setItem("railBuilderSaveGame", compressedAndEncrypted);
+          ui.showMessage("ゲームをセーブしました！ (ローカル)", "success", false, 2000);
         } catch (e) {
           console.error("ゲームのセーブに失敗しました:", e);
-          ui.showMessage("ゲームのセーブに失敗しました。", false, 3000);
+          ui.showMessage("ゲームのセーブに失敗しました。", "error", false, 3000);
         }
       }
 
       /** ローカルストレージからゲームの状態をロードする。 */
       function loadGame() {
+        ui.showLoadingOverlay("ゲームデータをロード中...");
         var savedData = localStorage.getItem("railBuilderSaveGame");
         if (!savedData) {
-          ui.showMessage("保存されたゲームデータがありません。", false, 3000);
+          ui.showMessage("保存されたゲームデータがありません。", "warning", false, 3000);
+          ui.hideLoadingOverlay();
           return;
         }
         try {
           var decompressed = LZString.decompressFromBase64(savedData); // 解凍
           if (!decompressed) {
-              throw new Error("LZ-String decompression failed.");
+            throw new Error("LZ-String decompression failed.");
           }
           var decrypted = xorEncryptDecrypt(decompressed, encryptionKey); // 復号化
           var loadedState = JSON.parse(decrypted);
 
           if (loadGameFromObject(loadedState)) {
-            ui.showMessage("ゲームをロードしました！ (ローカル)", false, 2000);
+            ui.showMessage(
+              "セーブデータを入力し、ゲームをロードしました！",
+              "success",
+              false,
+              2000
+            );
+            ui.saveDataTextarea.value = ""; // ロード後クリア
           }
         } catch (e) {
           console.error("ゲームのロードに失敗しました:", e);
-          ui.showMessage("ゲームのロードに失敗しました。データが破損している可能性があります。", false, 5000);
+          ui.showMessage(
+            "ゲームのロードに失敗しました。データが破損している可能性があります。",
+            "error",
+            false,
+            5000
+          );
+        } finally {
+          ui.hideLoadingOverlay();
         }
       }
 
@@ -3595,37 +4243,63 @@
           var jsonString = JSON.stringify(savableState);
           var encrypted = xorEncryptDecrypt(jsonString, encryptionKey); // 暗号化
           var compressedAndEncrypted = LZString.compressToBase64(encrypted); // 圧縮
-          
+
           ui.saveDataTextarea.value = compressedAndEncrypted;
-          ui.showMessage("セーブデータを出力しました。テキストエリアからコピーしてください。", false, 3000);
+          ui.showMessage(
+            "セーブデータを出力しました。テキストエリアからコピーしてください。",
+            "info",
+            false,
+            3000
+          );
         } catch (e) {
           console.error("セーブデータのエクスポートに失敗しました:", e);
-          ui.showMessage("セーブデータのエクスポートに失敗しました。", false, 3000);
+          ui.showMessage("セーブデータのエクスポートに失敗しました。", "error", false, 3000);
         }
       }
 
       /** テキストエリアのJSONテキストからゲーム状態をインポートする。 */
       function importSaveData() {
+        ui.showLoadingOverlay("セーブデータをインポート中...");
         var compressedAndEncrypted = ui.saveDataTextarea.value;
         if (!compressedAndEncrypted) {
-          ui.showMessage("テキストエリアにセーブデータを貼り付けてください。", false, 3000);
+          ui.showMessage(
+            "テキストエリアにセーブデータを貼り付けてください。",
+            "warning",
+            false,
+            3000
+          );
+          ui.hideLoadingOverlay();
           return;
         }
         try {
-          var decompressed = LZString.decompressFromBase64(compressedAndEncrypted); // 解凍
+          var decompressed = LZString.decompressFromBase64(
+            compressedAndEncrypted
+          ); // 解凍
           if (!decompressed) {
-              throw new Error("LZ-String decompression failed.");
+            throw new Error("LZ-String decompression failed.");
           }
           var decrypted = xorEncryptDecrypt(decompressed, encryptionKey); // 復号化
           var loadedState = JSON.parse(decrypted);
 
           if (loadGameFromObject(loadedState)) {
-            ui.showMessage("セーブデータを入力し、ゲームをロードしました！", false, 2000);
+            ui.showMessage(
+              "セーブデータを入力し、ゲームをロードしました！",
+              "success",
+              false,
+              2000
+            );
             ui.saveDataTextarea.value = ""; // ロード後クリア
           }
         } catch (e) {
           console.error("セーブデータのインポートに失敗しました:", e);
-          ui.showMessage("無効なセーブデータです。形式を確認してください。", false, 5000);
+          ui.showMessage(
+            "無効なセーブデータです。形式を確認してください。",
+            "error",
+            false,
+            5000
+          );
+        } finally {
+          ui.hideLoadingOverlay();
         }
       }
 
@@ -3644,8 +4318,8 @@
 
       // GeoTIFFを読み込み、ラスタデータをキャッシュ
       async function loadPopulationDensityTiff() {
+        ui.showLoadingOverlay("人口密度データを読み込み中...");
         try {
-          ui.showMessage("人口密度データを読み込み中...", true);
           const tiff = await GeoTIFF.fromUrl(POPULATION_DENSITY_TIFF_PATH);
           const image = await tiff.getImage();
 
@@ -3663,10 +4337,14 @@
 
           console.log("TIFF Width:", populationDensityWidth);
           console.log("TIFF Height:", populationDensityHeight);
-          console.log("Raster data length:", populationDensityData ? populationDensityData.length : "null"); // ここで長さを確認
+          console.log(
+            "Raster data length:",
+            populationDensityData ? populationDensityData.length : "null"
+          ); // ここで長さを確認
 
           ui.showMessage(
             "人口密度データの読み込みが完了しました。",
+            "success",
             false,
             3000
           );
@@ -3690,9 +4368,12 @@
           console.error("人口密度TIFFの読み込みに失敗しました:", error);
           ui.showMessage(
             "人口密度データの読み込みに失敗しました。ファイルパスを確認してください。",
+            "error",
             false,
             7000
           );
+        } finally {
+          ui.hideLoadingOverlay();
         }
       }
 
@@ -3705,46 +4386,57 @@
 
         let x = 0;
         if (lngRange !== 0) {
-            x = ((latlng.lng - minX) / lngRange) * populationDensityWidth;
+          x = ((latlng.lng - minX) / lngRange) * populationDensityWidth;
         }
         let y = 0;
         if (latRange !== 0) {
-            y = ((maxY - latlng.lat) / latRange) * populationDensityHeight;
+          y = ((maxY - latlng.lat) / latRange) * populationDensityHeight;
         }
-        
+
         return [Math.floor(x), Math.floor(y)];
       }
 
       // 人口密度を取得（キャッシュ配列から同期で取得）
       function getPopulationDensity(latlng) {
-        if (!populationDensityData || populationDensityWidth === 0 || populationDensityHeight === 0 || !populationDensityGeoTransform) return 0;
-        
+        if (
+          !populationDensityData ||
+          populationDensityWidth === 0 ||
+          populationDensityHeight === 0 ||
+          !populationDensityGeoTransform
+        )
+          return 0;
+
         // 緯度経度がGeoTIFFの範囲外の場合のチェック
         const [minX, minY, maxX, maxY] = populationDensityGeoTransform;
-        if (latlng.lng < minX || latlng.lng > maxX || latlng.lat < minY || latlng.lat > maxY) {
-            return 0; // 範囲外
+        if (
+          latlng.lng < minX ||
+          latlng.lng > maxX ||
+          latlng.lat < minY ||
+          latlng.lat > maxY
+        ) {
+          return 0; // 範囲外
         }
 
         const [x, y] = latLngToPixel(latlng);
-        
+
         // 範囲チェックを強化
         if (
-            x < 0 ||
-            x >= populationDensityWidth ||
-            y < 0 ||
-            y >= populationDensityHeight
+          x < 0 ||
+          x >= populationDensityWidth ||
+          y < 0 ||
+          y >= populationDensityHeight
         ) {
-            // console.warn("Pixel coordinates out of bounds:", x, y, "for LatLng:", latlng.lat, latlng.lng);
-            return 0;
+          // console.warn("Pixel coordinates out of bounds:", x, y, "for LatLng:", latlng.lat, latlng.lng);
+          return 0;
         }
-        
+
         // 計算されるインデックスが配列の範囲内にあるか最終チェック
         const index = y * populationDensityWidth + x;
         if (index < 0 || index >= populationDensityData.length) {
-            // console.error("Calculated index out of bounds:", index, "Array length:", populationDensityData.length, "for LatLng:", latlng.lat, latlng.lng);
-            return 0;
+          // console.error("Calculated index out of bounds:", index, "Array length:", populationDensityData.length, "for LatLng:", latlng.lat, latlng.lng);
+          return 0;
         }
-        
+
         return populationDensityData[index];
       }
 
@@ -3762,6 +4454,7 @@
         station.revenueMultiplier = multiplier;
 
         if (station.marker && station.marker.getPopup()) {
+          // ★修正5: 駅のポップアップに待機乗客数と最大待機乗客数を表示
           station.marker
             .getPopup()
             .setContent(
@@ -3796,8 +4489,8 @@
         } else if (density < 2000) {
           const ratio = (density - 500) / 1500;
           r = 255;
-          g = 100 * (1 - ratio); // 修正: gを減らす
-          b = 100 * (1 - ratio); // 修正: bを減らす
+          g = Math.floor(100 * (1 - ratio)); // 修正: gを減らす
+          b = Math.floor(100 * (1 - ratio)); // 修正: bを減らす
           a = 0.6 + 0.2 * ratio;
         } else {
           const ratio = Math.min(1, (density - 2000) / 8000);
@@ -3806,7 +4499,7 @@
           b = 100 + 155 * ratio;
           a = 0.8 + 0.1 * ratio;
         }
-        return `rgba(${Math.floor(r)},${Math.floor(g)},${Math.floor(b)},${a})`;
+        return `rgba(${Math.floor(r)},${Math.floor(b)},${Math.floor(g)},${a})`; /* RGB順序を調整 */
       }
 
       // Leaflet人口密度レイヤー
@@ -3847,12 +4540,141 @@
         populationDensityLayer.setZIndex(1);
       }
 
+      // ===================================================================
+      // チュートリアル機能
+      // ===================================================================
+      var tutorialSteps = [
+        {
+          title: "Rail Builder Proへようこそ！",
+          icon: "fas fa-train",
+          text: "このゲームでは、線路や駅を建設し、列車を運行して都市を発展させます。まずは基本的な操作を学びましょう。",
+        },
+        {
+          title: "1. 線路の建設",
+          icon: "fas fa-road",
+          text: "左側の「建設メニュー」から「地上線」「高架線」「トンネル」を選び、マップ上でドラッグして線路を建設します。建設コストに注意しましょう。",
+        },
+        {
+          title: "2. 駅の建設",
+          icon: "fas fa-train-station",
+          text: "「建設メニュー」から「駅」を選び、マップ上でドラッグして駅のプラットフォームを建設します。駅は乗客の乗り降りや収益の拠点となります。",
+        },
+        {
+          title: "3. 列車ショップ",
+          icon: "fas fa-cart-shopping",
+          text: "「列車ショップ」では、様々な種類の列車を購入できます。資金と相談して、最適な列車を選びましょう。",
+        },
+        {
+          title: "4. 路線設定",
+          icon: "fas fa-route",
+          text: "「路線設定」モードで駅を順番にクリックし、路線を作成します。作成した路線に列車を割り当てることで運行が開始されます。",
+        },
+        {
+          title: "5. 解体モード",
+          icon: "fas fa-hammer",
+          text: "「解体モード」では、建設済みの線路や駅を撤去できます。不要な施設を整理し、都市計画を見直しましょう。",
+        },
+        {
+          title: "6. 資金と時間",
+          icon: "fas fa-dollar-sign",
+          text: "右上の「資産」と「時間」はゲームの進行状況を示します。乗客を運び、収益を上げて資産を増やしましょう。ゲーム速度も調整できます。",
+        },
+        {
+          title: "7. 人口密度と収益",
+          icon: "fas fa-users",
+          text: "駅周辺の人口密度が高いほど、より多くの乗客が生成され、収益も増加します。人口密度の高い地域に駅を建設するのがおすすめです。",
+        },
+        {
+          title: "ゲーム開始！",
+          icon: "fas fa-play",
+          text: "これで基本的な操作はマスターしました。さあ、あなただけの鉄道王国を築き上げましょう！",
+        },
+      ];
+      var currentTutorialStep = 0;
+
+      function showTutorial() {
+        document.getElementById("tutorial-overlay").classList.add("show");
+        showTutorialStep(0);
+        // チュートリアル中はマップ操作を無効化
+        map.dragging.disable();
+        map.doubleClickZoom.disable();
+        map.scrollWheelZoom.disable();
+        map.boxZoom.disable();
+        map.keyboard.disable();
+        if (map.tap) map.tap.disable();
+        if (map.touchZoom) map.touchZoom.disable();
+        if (map.zoomControl) map.zoomControl.disable();
+      }
+
+      function hideTutorial() {
+        document.getElementById("tutorial-overlay").classList.remove("show");
+        localStorage.setItem("hasSeenTutorial", "true");
+        // チュートリアル終了後、マップ操作を有効化
+        map.dragging.enable();
+        map.doubleClickZoom.enable();
+        map.scrollWheelZoom.enable();
+        map.boxZoom.enable();
+        map.keyboard.enable();
+        if (map.tap) map.tap.enable();
+        if (map.touchZoom) map.tap.enable(); // tapを有効化
+        if (map.zoomControl) map.zoomControl.enable();
+      }
+
+      function showTutorialStep(stepIndex) {
+        if (stepIndex < 0 || stepIndex >= tutorialSteps.length) return;
+
+        currentTutorialStep = stepIndex;
+        var step = tutorialSteps[currentTutorialStep];
+
+        document.getElementById("tutorial-title").textContent = step.title;
+        document.getElementById("tutorial-icon").className =
+          step.icon + " tutorial-icon";
+        document.getElementById("tutorial-text").textContent = step.text;
+
+        document.getElementById("tutorial-prev-btn").disabled =
+          currentTutorialStep === 0;
+        document.getElementById("tutorial-next-btn").textContent =
+          currentTutorialStep === tutorialSteps.length - 1
+            ? "完了"
+            : "次へ";
+        document.getElementById("tutorial-next-btn").querySelector("i").className =
+          currentTutorialStep === tutorialSteps.length - 1
+            ? "fas fa-check"
+            : "fas fa-chevron-right";
+      }
+
+      function initTutorial() {
+        document
+          .getElementById("tutorial-next-btn")
+          .addEventListener("click", function () {
+            if (currentTutorialStep === tutorialSteps.length - 1) {
+              hideTutorial();
+            } else {
+              showTutorialStep(currentTutorialStep + 1);
+            }
+          });
+
+        document
+          .getElementById("tutorial-prev-btn")
+          .addEventListener("click", function () {
+            showTutorialStep(currentTutorialStep - 1);
+          });
+
+        document
+          .getElementById("tutorial-skip-btn")
+          .addEventListener("click", hideTutorial);
+
+        if (!localStorage.getItem("hasSeenTutorial")) {
+          showTutorial();
+        }
+      }
+
       // --- INITIAL LOAD ---
       document.addEventListener("DOMContentLoaded", function () {
-          loadPopulationDensityTiff();
+        loadPopulationDensityTiff().then(function () {
           setGameSpeed(1); // 初期速度は1倍
-
-
+          initTutorial(); // チュートリアルを初期化
+        });
       });
     </script>
   </body>
