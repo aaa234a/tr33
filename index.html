@@ -186,7 +186,7 @@
       /* マップ上の表示物 */
       /* 線路のレール */
       .track-rail {
-        color: #b0b0b0; /* レール色 */
+        color: #a0a0a0; /* レール色: やや明るいグレー */
         weight: 2;
         opacity: 0.9;
         lineCap: butt; /* 端を四角に */
@@ -194,7 +194,7 @@
       }
       /* 線路の枕木 */
       .track-sleeper {
-        color: #5a4b40; /* 枕木色 */
+        color: #6a5c50; /* 枕木色: やや濃い茶色 */
         weight: 8; /* 枕木は太く */
         opacity: 0.9;
         dashArray: "1 10"; /* 短い線と長い間隔で枕木を表現 */
@@ -202,25 +202,33 @@
         z-index: 5; /* レールより下 */
       }
 
+      /* 地上線路 */
+      .track-ground-rail {
+        color: #a0a0a0;
+      }
+      .track-ground-sleeper {
+        color: #6a5c50;
+      }
+
       /* 高架線路の見た目 */
       .track-viaduct-rail {
-        color: #c0c0c0;
+        color: #c0c0c0; /* 高架線は明るいグレー */
       }
       .track-viaduct-sleeper {
-        color: #706050;
+        color: #807060; /* 高架線の枕木は少し明るい茶色 */
       }
       /* トンネル線路の見た目 */
       .track-tunnel-rail {
-        color: #808080;
+        color: #606060; /* トンネル線は暗いグレー */
       }
       .track-tunnel-sleeper {
-        color: #403020;
+        color: #403020; /* トンネルの枕木は暗い茶色 */
       }
 
       /* 駅ホーム本体 */
       .station-platform-body {
-        color: #a0a0a0; /* コンクリート色 */
-        weight: 10; /* ホーム本体は太く */
+        color: #b0b0b0; /* コンクリート色 */
+        weight: 15; /* ホーム本体は太く */
         opacity: 0.9;
         lineCap: butt;
         z-index: 15; /* レールより上 */
@@ -228,7 +236,7 @@
       /* 駅ホームの縁 */
       .station-platform-edge {
         color: #ffffff; /* 白線 */
-        weight: 2; /* 細い縁 */
+        weight: 4; /* 細い縁 */
         opacity: 1;
         lineCap: butt;
         z-index: 20; /* ホーム本体より上 */
@@ -630,6 +638,11 @@
         line-height: 1.6;
         color: #555;
         margin-bottom: 20px;
+      }
+      .tutorial-icon {
+        font-size: 3em;
+        color: #007bff;
+        margin-bottom: 15px;
       }
       .tutorial-navigation-buttons button {
         width: auto;
@@ -1046,21 +1059,18 @@
         },
         // revenuePerStationStop: 10000, // 駅に停車するたびに得られる基本収益 (廃止)
         passengerCapacityPerCar: 50, // 1車両あたりの乗客容量
-        // ★修正1: 駅で生成される乗客の基本量を15から50に増やしました
-        basePassengerGeneration: 1000,
+        basePassengerGeneration: 1000, // ★修正1: 駅で生成される乗客の基本量を15から1000に増やしました
         passengerRevenuePerPerson: 100, // 1人あたりの乗客収益（降車時）
         passengerGenerationInterval: 100, // 乗客を生成する間隔 (ms)
         passengerMaxDestinationAttempts: 5, // 乗客の目的地を決定する際の試行回数
         maxWaitingPassengersPerMeterOfPlatform: 2, // プラットフォーム1mあたりの最大待機乗客数
-        // ★修正3: 1路線セグメントあたりの最適な車両数を10から5に減らしました
-        optimalCarsPerLineSegment: 5,
+        optimalCarsPerLineSegment: 5, // ★修正3: 1路線セグメントあたりの最適な車両数を10から5に減らしました
 
         // 列車種類を実在のものに修正
         trains: [
           {
             id: "e233",
             name: "E233系通勤電車",
-
             cars: 10,
             cost: 1000000,
             color: "#007bff",
@@ -1177,6 +1187,7 @@
         snapThresholdMeters: 20, // 線路接続判定のメートル距離
         gameTimeInterval: 1000, // ゲーム内時間更新間隔 (ms)
         gameTimeScale: 60, // リアル1秒がゲーム内60秒に相当
+        splineSegmentsPerTrackSegment: 10, // Catmull-Rom補間でのセグメントあたりの中間点数
       };
 
       // --- GAME STATE: ゲームの現在の状態を保持するオブジェクト (let -> var) ---
@@ -1764,6 +1775,91 @@
         }
         return null;
       }
+
+      /**
+       * Catmull-Romスプライン補間を使用して、与えられた点列を滑らかにする。
+       * @param {L.LatLng[]} points - 補間する点の配列。
+       * @param {number} numSegments - 各セグメント間に生成する中間点の数。
+       * @returns {L.LatLng[]} - 補間された点の配列。
+       */
+      function getCatmullRomSpline(points, numSegments) {
+        if (points.length < 2) {
+          return points;
+        }
+        if (points.length === 2) {
+          // 2点の場合は直線
+          return points;
+        }
+
+        numSegments = numSegments || CONFIG.splineSegmentsPerTrackSegment;
+
+        var interpolatedPoints = [];
+        var i;
+
+        // 仮想の始点と終点を追加して、曲線が端点を通るようにする
+        var p0, p1, p2, p3;
+
+        // 最初のセグメント (p0 = p1)
+        p0 = points[0];
+        p1 = points[0];
+        p2 = points[1];
+        p3 = points.length > 2 ? points[2] : points[1]; // 3点未満の場合の対応
+        for (i = 0; i <= numSegments; i++) {
+          var t = i / numSegments;
+          interpolatedPoints.push(interpolateCatmullRom(p0, p1, p2, p3, t));
+        }
+
+        // 中間のセグメント
+        for (var j = 1; j < points.length - 2; j++) {
+          p0 = points[j - 1];
+          p1 = points[j];
+          p2 = points[j + 1];
+          p3 = points[j + 2];
+          for (i = 1; i <= numSegments; i++) {
+            // 最初の点は重複するので1から
+            var t = i / numSegments;
+            interpolatedPoints.push(interpolateCatmullRom(p0, p1, p2, p3, t));
+          }
+        }
+
+        // 最後のセグメント (p3 = p2)
+        p0 = points[points.length - 3];
+        p1 = points[points.length - 2];
+        p2 = points[points.length - 1];
+        p3 = points[points.length - 1];
+        for (i = 1; i <= numSegments; i++) {
+          // 最初の点は重複するので1から
+          var t = i / numSegments;
+          interpolatedPoints.push(interpolateCatmullRom(p0, p1, p2, p3, t));
+        }
+
+        return interpolatedPoints;
+      }
+
+      /**
+       * Catmull-Romスプライン補間の計算ヘルパー。
+       * @param {L.LatLng} p0 - 制御点0
+       * @param {L.LatLng} p1 - 制御点1 (開始点)
+       * @param {L.LatLng} p2 - 制御点2 (終了点)
+       * @param {L.LatLng} p3 - 制御点3
+       * @param {number} t - 0から1までの補間パラメータ
+       * @returns {L.LatLng} - 補間された点
+       */
+      function interpolateCatmullRom(p0, p1, p2, p3, t) {
+        var t2 = t * t;
+        var t3 = t2 * t;
+
+        var c0 = 0.5 * (-t3 + 2 * t2 - t);
+        var c1 = 0.5 * (2 * t3 - 3 * t2 + 1);
+        var c2 = 0.5 * (-2 * t3 + 3 * t2 + t);
+        var c3 = 0.5 * (t3 - t2);
+
+        var lat = p0.lat * c0 + p1.lat * c1 + p2.lat * c2 + p3.lat * c3;
+        var lng = p0.lng * c0 + p1.lng * c1 + p2.lng * c2 + p3.lng * c3;
+
+        return L.latLng(lat, lng);
+      }
+
       /**
        * 2つの駅間を接続する既存の線路パスを探索し、そのパスを構成するLatLngsを返す。
        * グラフ探索（BFS）により、連続した線路・駅プラットフォームを繋ぐ。
@@ -1850,6 +1946,7 @@
             if (
               nodes[id1].latlng.distanceTo(nodes[id2].latlng) < thresholdMeters
             ) {
+              // 接続パスは2点間の直線
               addEdge(id1, id2, [nodes[id1].latlng, nodes[id2].latlng]);
             }
           }
@@ -1866,32 +1963,35 @@
         ];
 
         var queue = [];
-        var visited = {};
+        var visited = {}; // 訪問済みノードのIDを保持
+        var pathMap = {}; // ノードIDからそこに至るまでのパスを保持
 
         // 始点駅の両端をキューの初期値として追加
         for (i = 0; i < startNodeIds.length; i++) {
           var startId = startNodeIds[i];
           if (nodes[startId]) {
-            queue.push({ id: startId, path: [nodes[startId].latlng] });
+            queue.push(startId);
             visited[startId] = true;
+            pathMap[startId] = [nodes[startId].latlng];
           }
         }
 
         while (queue.length > 0) {
-          var current = queue.shift();
+          var currentId = queue.shift();
+          var currentPath = pathMap[currentId];
 
           // 終点駅のどちらかの端に到達したら成功
-          if (endNodeIds.includes(current.id)) {
-            return current.path;
+          if (endNodeIds.includes(currentId)) {
+            return currentPath;
           }
 
-          var neighbors = adj[current.id] || [];
+          var neighbors = adj[currentId] || [];
           for (i = 0; i < neighbors.length; i++) {
             var neighbor = neighbors[i];
             if (!visited[neighbor.to]) {
               visited[neighbor.to] = true;
 
-              var newPath = [].concat(current.path);
+              var newPath = [].concat(currentPath);
               var segmentPath = neighbor.path;
 
               // 接続点で座標が重複しないようにパスを結合
@@ -1904,8 +2004,8 @@
               } else {
                 Array.prototype.push.apply(newPath, segmentPath);
               }
-
-              queue.push({ id: neighbor.to, path: newPath });
+              pathMap[neighbor.to] = newPath;
+              queue.push(neighbor.to);
             }
           }
         }
@@ -2218,7 +2318,6 @@
 
         // 既存の駅のプラットフォームの端点をスナップ候補に追加
         for (i = 0; i < state.stations.length; i++) {
-          // snapCandidates.push(state.stations[i].latlng); // 中心点ではなく端点を候補にする
           if (
             state.stations[i].latlngs &&
             state.stations[i].latlngs.length >= 2
@@ -2455,19 +2554,24 @@
             });
         } else {
           // 線路建設
+          var smoothedLatLngs = getCatmullRomSpline(
+            points,
+            CONFIG.splineSegmentsPerTrackSegment
+          );
+
           var trackId = generateUniqueId();
-          var railLayer = L.polyline(points, {
+          var railLayer = L.polyline(smoothedLatLngs, {
             className: "track-rail track-" + type + "-rail",
             id: trackId,
           }).addTo(map);
-          var sleeperLayer = L.polyline(points, {
+          var sleeperLayer = L.polyline(smoothedLatLngs, {
             className: "track-sleeper track-" + type + "-sleeper",
             id: trackId,
           }).addTo(map);
 
           state.tracks.push({
             id: trackId,
-            latlngs: points,
+            latlngs: smoothedLatLngs, // スプライン補間された点列を保存
             railLayer: railLayer, // レイヤーを分割
             sleeperLayer: sleeperLayer, // レイヤーを分割
             type: type,
@@ -3425,20 +3529,25 @@
           var nextStationId = null; // 列車が次に向かう駅のID
 
           // 現在停車している駅の路線のインデックスを取得
-          var arrivedStationIndexInLine = currentLineStationIds.indexOf(arrivedStationId);
+          var arrivedStationIndexInLine = currentLineStationIds.indexOf(
+            arrivedStationId
+          );
 
           if (arrivedStationIndexInLine !== -1) {
-              if (train.direction === 1) {
-                  // 順方向で到着した場合、次に向かう駅は路線の次の駅
-                  if (arrivedStationIndexInLine + 1 < currentLineStationIds.length) {
-                      nextStationId = currentLineStationIds[arrivedStationIndexInLine + 1];
-                  }
-              } else { // train.direction === -1 (逆方向)
-                  // 逆方向で到着した場合、次に向かう駅は路線の前の駅
-                  if (arrivedStationIndexInLine - 1 >= 0) {
-                      nextStationId = currentLineStationIds[arrivedStationIndexInLine - 1];
-                  }
+            if (train.direction === 1) {
+              // 順方向で到着した場合、次に向かう駅は路線の次の駅
+              if (arrivedStationIndexInLine + 1 < currentLineStationIds.length) {
+                nextStationId =
+                  currentLineStationIds[arrivedStationIndexInLine + 1];
               }
+            } else {
+              // train.direction === -1 (逆方向)
+              // 逆方向で到着した場合、次に向かう駅は路線の前の駅
+              if (arrivedStationIndexInLine - 1 >= 0) {
+                nextStationId =
+                  currentLineStationIds[arrivedStationIndexInLine - 1];
+              }
+            }
           }
 
           var tempPassengersWaiting = []; // 駅に残る乗客を一時的に保持する配列
@@ -3573,24 +3682,33 @@
 
             // 修正箇所: 現在の駅が属する路線の中からランダムに1つ選び、その路線上の他の駅を目的地とする
             if (linesServingStation.length > 0) {
-                var selectedLine = linesServingStation[Math.floor(Math.random() * linesServingStation.length)];
-                for (var m = 0; m < selectedLine.stationIds.length; m++) {
-                    var destId = selectedLine.stationIds[m];
-                    if (destId !== station.id) { // 自分自身は目的地にしない
-                        possibleDestinationStations.push(destId);
-                    }
+              var selectedLine =
+                linesServingStation[
+                  Math.floor(Math.random() * linesServingStation.length)
+                ];
+              for (var m = 0; m < selectedLine.stationIds.length; m++) {
+                var destId = selectedLine.stationIds[m];
+                if (destId !== station.id) {
+                  // 自分自身は目的地にしない
+                  possibleDestinationStations.push(destId);
                 }
+              }
             }
 
             if (possibleDestinationStations.length > 0) {
-                // 接続可能な駅の中からランダムに選択
-                var randomIndex = Math.floor(Math.random() * possibleDestinationStations.length);
-                destinationStation = getStationById(possibleDestinationStations[randomIndex]);
+              // 接続可能な駅の中からランダムに選択
+              var randomIndex = Math.floor(
+                Math.random() * possibleDestinationStations.length
+              );
+              destinationStation = getStationById(
+                possibleDestinationStations[randomIndex]
+              );
             }
             // else: この駅がどの路線にも属していない、または単独の駅である場合、乗客は生成されない。
             // これにより、無駄な乗客が減り、降車率が上がる。
 
-            if (destinationStation) { // destinationStation が null でない場合のみ乗客を追加
+            if (destinationStation) {
+              // destinationStation が null でない場合のみ乗客を追加
               station.passengersWaiting.push({
                 id: generateUniqueId(),
                 destinationStationId: destinationStation.id,
@@ -3608,7 +3726,8 @@
        * ゲーム内時間を更新する。
        */
       function updateGameTime() {
-        state.gameTime += CONFIG.gameTimeInterval * state.gameSpeedMultiplier * CONFIG.gameTimeScale;
+        state.gameTime +=
+          CONFIG.gameTimeInterval * state.gameSpeedMultiplier * CONFIG.gameTimeScale;
         ui.updateGameTimeDisplay();
       }
 
@@ -4571,7 +4690,7 @@
         {
           title: "1. 線路の建設",
           icon: "fas fa-road",
-          text: "左側の「建設メニュー」から「地上線」「高架線」「トンネル」を選び、マップ上でドラッグして線路を建設します。建設コストに注意しましょう。",
+          text: "左側の「建設メニュー」から「地上線」「高架線」「トンネル」を選び、マップ上でドラッグして線路を建設します。線路は自動的に滑らかなカーブになります。建設コストに注意しましょう。",
         },
         {
           title: "2. 駅の建設",
