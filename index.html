@@ -1283,7 +1283,7 @@
         gameTimeScale: 60, // リアル1秒がゲーム内60秒に相当
         splineSegmentsPerTrackSegment: 10, // Catmull-Rom補間でのセグメントあたりの中間点数
 
-        // 新規追加: ミッション定義
+        // 新規追加: ミッション定義 (50個に拡張)
         missions: [
           {
             id: "first_track",
@@ -1392,6 +1392,421 @@
             target: 25000000,
             reward: 5000000,
             unlockedBy: "establish_5_stations",
+          },
+          // ここから追加ミッション (計50個)
+          {
+            id: "build_3_trains",
+            title: "車両拡充",
+            description: "列車を合計3編成購入する。",
+            type: "buy_train_count",
+            target: 3,
+            reward: 2500000,
+            unlockedBy: "reach_25m_assets",
+          },
+          {
+            id: "transport_1k_passengers",
+            title: "輸送力強化",
+            description: "合計1,000人の乗客を輸送する。",
+            type: "transport_passengers",
+            target: 1000,
+            reward: 3500000,
+            unlockedBy: "build_3_trains",
+          },
+          {
+            id: "expand_network_3",
+            title: "広域ネットワーク",
+            description: "合計25,000mの線路を建設する。",
+            type: "build_track_length",
+            target: 25000,
+            reward: 6000000,
+            unlockedBy: "transport_1k_passengers",
+          },
+          {
+            id: "establish_10_stations",
+            title: "拠点網の拡大",
+            description: "駅を合計10個建設する。",
+            type: "build_station_count",
+            target: 10,
+            reward: 4000000,
+            unlockedBy: "expand_network_3",
+          },
+          {
+            id: "build_5_lines",
+            title: "路線網の整備",
+            description: "路線を合計5つ設定する。",
+            type: "build_line_count",
+            target: 5,
+            reward: 4500000,
+            unlockedBy: "establish_10_stations",
+          },
+          {
+            id: "reach_50m_assets",
+            title: "資産5000万ドル",
+            description: "総資産を50,000,000ドルにする。",
+            type: "reach_assets",
+            target: 50000000,
+            reward: 8000000,
+            unlockedBy: "build_5_lines",
+          },
+          {
+            id: "transport_2_5k_passengers",
+            title: "中規模輸送",
+            description: "合計2,500人の乗客を輸送する。",
+            type: "transport_passengers",
+            target: 2500,
+            reward: 5000000,
+            unlockedBy: "reach_50m_assets",
+          },
+          {
+            id: "build_5_trains",
+            title: "増備計画",
+            description: "列車を合計5編成購入する。",
+            type: "buy_train_count",
+            target: 5,
+            reward: 4000000,
+            unlockedBy: "transport_2_5k_passengers",
+          },
+          {
+            id: "expand_network_4",
+            title: "都市間接続",
+            description: "合計50,000mの線路を建設する。",
+            type: "build_track_length",
+            target: 50000,
+            reward: 10000000,
+            unlockedBy: "build_5_trains",
+          },
+          {
+            id: "establish_15_stations",
+            title: "主要駅の確立",
+            description: "駅を合計15個建設する。",
+            type: "build_station_count",
+            target: 15,
+            reward: 6000000,
+            unlockedBy: "expand_network_4",
+          },
+          {
+            id: "build_10_lines",
+            title: "幹線網の構築",
+            description: "路線を合計10個設定する。",
+            type: "build_line_count",
+            target: 10,
+            reward: 7000000,
+            unlockedBy: "establish_15_stations",
+          },
+          {
+            id: "reach_100m_assets",
+            title: "資産1億ドル",
+            description: "総資産を100,000,000ドルにする。",
+            type: "reach_assets",
+            target: 100000000,
+            reward: 15000000,
+            unlockedBy: "build_10_lines",
+          },
+          {
+            id: "transport_5k_passengers",
+            title: "大規模輸送",
+            description: "合計5,000人の乗客を輸送する。",
+            type: "transport_passengers",
+            target: 5000,
+            reward: 8000000,
+            unlockedBy: "reach_100m_assets",
+          },
+          {
+            id: "build_10_trains",
+            title: "車両の多様化",
+            description: "列車を合計10編成購入する。",
+            type: "buy_train_count",
+            target: 10,
+            reward: 7000000,
+            unlockedBy: "transport_5k_passengers",
+          },
+          {
+            id: "expand_network_5",
+            title: "地域ネットワーク",
+            description: "合計75,000mの線路を建設する。",
+            type: "build_track_length",
+            target: 75000,
+            reward: 12000000,
+            unlockedBy: "build_10_trains",
+          },
+          {
+            id: "establish_20_stations",
+            title: "主要ターミナル",
+            description: "駅を合計20個建設する。",
+            type: "build_station_count",
+            target: 20,
+            reward: 8000000,
+            unlockedBy: "expand_network_5",
+          },
+          {
+            id: "build_15_lines",
+            title: "広域路線網",
+            description: "路線を合計15個設定する。",
+            type: "build_line_count",
+            target: 15,
+            reward: 9000000,
+            unlockedBy: "establish_20_stations",
+          },
+          {
+            id: "reach_250m_assets",
+            title: "資産2億5000万ドル",
+            description: "総資産を250,000,000ドルにする。",
+            type: "reach_assets",
+            target: 250000000,
+            reward: 25000000,
+            unlockedBy: "build_15_lines",
+          },
+          {
+            id: "transport_10k_passengers",
+            title: "都市圏輸送",
+            description: "合計10,000人の乗客を輸送する。",
+            type: "transport_passengers",
+            target: 10000,
+            reward: 12000000,
+            unlockedBy: "reach_250m_assets",
+          },
+          {
+            id: "build_15_trains",
+            title: "車両基地の拡充",
+            description: "列車を合計15編成購入する。",
+            type: "buy_train_count",
+            target: 15,
+            reward: 10000000,
+            unlockedBy: "transport_10k_passengers",
+          },
+          {
+            id: "expand_network_6",
+            title: "全国ネットワーク",
+            description: "合計100,000mの線路を建設する。",
+            type: "build_track_length",
+            target: 100000,
+            reward: 15000000,
+            unlockedBy: "build_15_trains",
+          },
+          {
+            id: "establish_25_stations",
+            title: "広域拠点",
+            description: "駅を合計25個建設する。",
+            type: "build_station_count",
+            target: 25,
+            reward: 10000000,
+            unlockedBy: "expand_network_6",
+          },
+          {
+            id: "build_20_lines",
+            title: "主要幹線網",
+            description: "路線を合計20個設定する。",
+            type: "build_line_count",
+            target: 20,
+            reward: 12000000,
+            unlockedBy: "establish_25_stations",
+          },
+          {
+            id: "reach_500m_assets",
+            title: "資産5億ドル",
+            description: "総資産を500,000,000ドルにする。",
+            type: "reach_assets",
+            target: 500000000,
+            reward: 40000000,
+            unlockedBy: "build_20_lines",
+          },
+          {
+            id: "transport_25k_passengers",
+            title: "大量輸送時代",
+            description: "合計25,000人の乗客を輸送する。",
+            type: "transport_passengers",
+            target: 25000,
+            reward: 18000000,
+            unlockedBy: "reach_500m_assets",
+          },
+          {
+            id: "build_20_trains",
+            title: "車両の充実",
+            description: "列車を合計20編成購入する。",
+            type: "buy_train_count",
+            target: 20,
+            reward: 15000000,
+            unlockedBy: "transport_25k_passengers",
+          },
+          {
+            id: "expand_network_7",
+            title: "超広域ネットワーク",
+            description: "合計150,000mの線路を建設する。",
+            type: "build_track_length",
+            target: 150000,
+            reward: 20000000,
+            unlockedBy: "build_20_trains",
+          },
+          {
+            id: "establish_30_stations",
+            title: "主要都市圏",
+            description: "駅を合計30個建設する。",
+            type: "build_station_count",
+            target: 30,
+            reward: 12000000,
+            unlockedBy: "expand_network_7",
+          },
+          {
+            id: "build_25_lines",
+            title: "鉄道網の完成",
+            description: "路線を合計25個設定する。",
+            type: "build_line_count",
+            target: 25,
+            reward: 15000000,
+            unlockedBy: "establish_30_stations",
+          },
+          {
+            id: "reach_1b_assets",
+            title: "資産10億ドル",
+            description: "総資産を1,000,000,000ドルにする。",
+            type: "reach_assets",
+            target: 1000000000,
+            reward: 75000000,
+            unlockedBy: "build_25_lines",
+          },
+          {
+            id: "transport_50k_passengers",
+            title: "国民の足",
+            description: "合計50,000人の乗客を輸送する。",
+            type: "transport_passengers",
+            target: 50000,
+            reward: 25000000,
+            unlockedBy: "reach_1b_assets",
+          },
+          {
+            id: "build_25_trains",
+            title: "車両大隊",
+            description: "列車を合計25編成購入する。",
+            type: "buy_train_count",
+            target: 25,
+            reward: 20000000,
+            unlockedBy: "transport_50k_passengers",
+          },
+          {
+            id: "expand_network_8",
+            title: "大陸横断鉄道",
+            description: "合計200,000mの線路を建設する。",
+            type: "build_track_length",
+            target: 200000,
+            reward: 25000000,
+            unlockedBy: "build_25_trains",
+          },
+          {
+            id: "establish_35_stations",
+            title: "主要交通拠点",
+            description: "駅を合計35個建設する。",
+            type: "build_station_count",
+            target: 35,
+            reward: 15000000,
+            unlockedBy: "expand_network_8",
+          },
+          {
+            id: "build_30_lines",
+            title: "国家鉄道網",
+            description: "路線を合計30個設定する。",
+            type: "build_line_count",
+            target: 30,
+            reward: 18000000,
+            unlockedBy: "establish_35_stations",
+          },
+          {
+            id: "reach_2_5b_assets",
+            title: "資産25億ドル",
+            description: "総資産を2,500,000,000ドルにする。",
+            type: "reach_assets",
+            target: 2500000000,
+            reward: 150000000,
+            unlockedBy: "build_30_lines",
+          },
+          {
+            id: "transport_100k_passengers",
+            title: "世界一の輸送量",
+            description: "合計100,000人の乗客を輸送する。",
+            type: "transport_passengers",
+            target: 100000,
+            reward: 40000000,
+            unlockedBy: "reach_2_5b_assets",
+          },
+          {
+            id: "expand_network_9",
+            title: "世界鉄道網",
+            description: "合計250,000mの線路を建設する。",
+            type: "build_track_length",
+            target: 250000,
+            reward: 30000000,
+            unlockedBy: "transport_100k_passengers",
+          },
+          {
+            id: "establish_40_stations",
+            title: "グローバルハブ",
+            description: "駅を合計40個建設する。",
+            type: "build_station_count",
+            target: 40,
+            reward: 18000000,
+            unlockedBy: "expand_network_9",
+          },
+          {
+            id: "build_35_lines",
+            title: "国際路線網",
+            description: "路線を合計35個設定する。",
+            type: "build_line_count",
+            target: 35,
+            reward: 20000000,
+            unlockedBy: "establish_40_stations",
+          },
+          {
+            id: "reach_5b_assets",
+            title: "資産50億ドル",
+            description: "総資産を5,000,000,000ドルにする。",
+            type: "reach_assets",
+            target: 5000000000,
+            reward: 250000000,
+            unlockedBy: "build_35_lines",
+          },
+          {
+            id: "transport_250k_passengers",
+            title: "輸送の神",
+            description: "合計250,000人の乗客を輸送する。",
+            type: "transport_passengers",
+            target: 250000,
+            reward: 75000000,
+            unlockedBy: "reach_5b_assets",
+          },
+          {
+            id: "build_30_trains",
+            title: "鉄道王",
+            description: "列車を合計30編成購入する。",
+            type: "buy_train_count",
+            target: 30,
+            reward: 25000000,
+            unlockedBy: "transport_250k_passengers",
+          },
+          {
+            id: "expand_network_10",
+            title: "究極の鉄道網",
+            description: "合計500,000mの線路を建設する。",
+            type: "build_track_length",
+            target: 500000,
+            reward: 50000000,
+            unlockedBy: "build_30_trains",
+          },
+          {
+            id: "establish_50_stations",
+            title: "鉄道帝国",
+            description: "駅を合計50個建設する。",
+            type: "build_station_count",
+            target: 50,
+            reward: 25000000,
+            unlockedBy: "expand_network_10",
+          },
+          {
+            id: "reach_10b_assets",
+            title: "資産100億ドル",
+            description: "総資産を10,000,000,000ドルにする。",
+            type: "reach_assets",
+            target: 10000000000,
+            reward: 500000000,
+            unlockedBy: "establish_50_stations",
           },
         ],
       };
@@ -2327,97 +2742,7 @@
         map.getContainer().classList.remove("build-mode-cursor"); // カーソルを元に戻す
       }
 
-      // --- EVENT LISTENERS: 各種UIイベントハンドラの設定 ---
-
-      // 建設ボタン
-      document.getElementById("build-ground").onclick = function () {
-        deactivateAllModes();
-        startPlanning("ground");
-      };
-      document.getElementById("build-viaduct").onclick = function () {
-        deactivateAllModes();
-        startPlanning("viaduct");
-      };
-      document.getElementById("build-tunnel").onclick = function () {
-        deactivateAllModes();
-        startPlanning("tunnel");
-      };
-      document.getElementById("build-station").onclick = function () {
-        deactivateAllModes();
-        startPlanning("station");
-      };
-      ui.confirmBuildButton.onclick = confirmBuild;
-
-      // 列車ショップボタン
-      ui.buyTrainButton.onclick = buySelectedTrain;
-      ui.assignTrainToLineButton.onclick = assignSelectedTrainToLine;
-      ui.lineSelectForAssignment.onchange = function () {
-        ui.assignTrainToLineButton.disabled =
-          !state.selectedTrainToAssignId || !ui.lineSelectForAssignment.value;
-      };
-
-      // 路線設定ボタン
-      ui.startLineBuildButton.onclick = function () {
-        deactivateAllModes();
-        startLineBuilding();
-      };
-      ui.confirmLineBuildButton.onclick = confirmLineBuilding;
-      ui.cancelLineBuildButton.onclick = cancelLineBuilding;
-
-      // 解体ボタン
-      ui.demolitionModeButton.onclick = function () {
-        deactivateAllModes();
-        startDemolitionMode();
-      };
-      ui.confirmDemolitionButton.onclick = confirmDemolition;
-      ui.cancelDemolitionButton.onclick = cancelDemolition;
-
-      // セーブ/ロードボタン (既存)
-      ui.saveGameButton.onclick = saveGame;
-      ui.loadGameButton.onclick = loadGame;
-
-      // セーブデータ出力/入力ボタン
-      ui.exportSaveButton.onclick = exportSaveData;
-      ui.importSaveButton.onclick = importSaveData;
-      // ui.generateShareUrlButton.onclick = generateShareUrl; // 削除
-
-      // ゲーム速度ボタン
-      var speedButtons = document.querySelectorAll(
-        "#game-speed-control .speed-btn"
-      );
-      for (var i = 0; i < speedButtons.length; i++) {
-        speedButtons[i].onclick = function () {
-          setGameSpeed(parseInt(this.dataset.speed));
-        };
-      }
-
-      // 左パネル開閉ボタン
-      ui.toggleLeftPanelButton.onclick = function () {
-        document.getElementById("left-panel").classList.toggle("collapsed");
-        var icon = this.querySelector("i");
-        if (icon.classList.contains("fa-chevron-left")) {
-          icon.classList.remove("fa-chevron-left");
-          icon.classList.add("fa-chevron-right");
-        } else {
-          icon.classList.remove("fa-chevron-right");
-          icon.classList.add("fa-chevron-left");
-        }
-      };
-
-      // 新規追加: 人口密度表示ボタン
-      ui.togglePopulationDensityLayerBtn.onclick = function () {
-        if (populationDensityLayer && map.hasLayer(populationDensityLayer)) {
-          map.removeLayer(populationDensityLayer);
-          this.classList.remove("active");
-          ui.showMessage("人口密度表示をオフにしました。", "info");
-        } else {
-          addPopulationDensityLayer();
-          this.classList.add("active");
-          ui.showMessage("人口密度表示をオンにしました。", "info");
-        }
-      };
-
-      // --- PLANNING (TRACK/STATION CONSTRUCTION): 線路・駅建設モードのロジック ---
+      // --- MAP EVENTS FOR CONSTRUCTION ---
       var dragging = false; // マップドラッグ中かどうかのフラグ
 
       /**
