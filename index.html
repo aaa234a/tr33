@@ -5373,6 +5373,13 @@
         populationDensityLayer.setZIndex(1);
       }
 
+      function removePopulationDensityLayer() {
+        if (populationDensityLayer) {
+          map.removeLayer(populationDensityLayer);
+          populationDensityLayer = null;
+        }
+      }
+
       // ===================================================================
       // ミッションシステム機能
       // ===================================================================
@@ -5634,6 +5641,94 @@
           setGameSpeed(1); // 初期速度は1倍
           initTutorial(); // チュートリアルを初期化
           requestAnimationFrame(gameLoop); // ゲームループを開始
+        });
+
+        // --- イベントリスナーの追加 ---
+        // 建設メニュー
+        document
+          .getElementById("build-ground")
+          .addEventListener("click", function () {
+            startPlanning("ground");
+          });
+        document
+          .getElementById("build-viaduct")
+          .addEventListener("click", function () {
+            startPlanning("viaduct");
+          });
+        document
+          .getElementById("build-tunnel")
+          .addEventListener("click", function () {
+            startPlanning("tunnel");
+          });
+        document
+          .getElementById("build-station")
+          .addEventListener("click", function () {
+            startPlanning("station");
+          });
+        ui.confirmBuildButton.addEventListener("click", confirmBuild);
+
+        // 列車ショップ
+        ui.buyTrainButton.addEventListener("click", buySelectedTrain);
+        ui.lineSelectForAssignment.addEventListener("change", function () {
+          ui.assignTrainToLineButton.disabled =
+            !state.selectedTrainToAssignId || !this.value;
+        });
+        ui.assignTrainToLineButton.addEventListener(
+          "click",
+          assignSelectedTrainToLine
+        );
+
+        // 路線設定
+        ui.startLineBuildButton.addEventListener("click", startLineBuilding);
+        ui.confirmLineBuildButton.addEventListener("click", confirmLineBuilding);
+        ui.cancelLineBuildButton.addEventListener("click", cancelLineBuilding);
+
+        // 解体メニュー
+        ui.demolitionModeButton.addEventListener("click", startDemolitionMode);
+        ui.confirmDemolitionButton.addEventListener("click", confirmDemolition);
+        ui.cancelDemolitionButton.addEventListener("click", cancelDemolition);
+
+        // セーブ/ロード
+        ui.saveGameButton.addEventListener("click", saveGame);
+        ui.loadGameButton.addEventListener("click", loadGame);
+        ui.exportSaveButton.addEventListener("click", exportSaveData);
+        ui.importSaveButton.addEventListener("click", importSaveData);
+
+        // 左パネルの開閉ボタン
+        // --- 修正箇所: コメントアウトを解除 ---
+        ui.toggleLeftPanelButton.addEventListener("click", function () {
+          var leftPanel = document.getElementById("left-panel");
+          var icon = ui.toggleLeftPanelButton.querySelector("i");
+          leftPanel.classList.toggle("collapsed");
+          if (leftPanel.classList.contains("collapsed")) {
+            icon.classList.remove("fa-chevron-left");
+            icon.classList.add("fa-chevron-right");
+          } else {
+            icon.classList.remove("fa-chevron-right");
+            icon.classList.add("fa-chevron-left");
+          }
+        });
+
+        // ゲーム速度コントロール
+        // --- 修正箇所: コメントアウトを解除 ---
+        document
+          .querySelectorAll("#game-speed-control .speed-btn")
+          .forEach(function (button) {
+            button.addEventListener("click", function () {
+              setGameSpeed(parseInt(this.dataset.speed));
+            });
+          });
+
+        // 人口密度表示切り替えボタン
+        // --- 修正箇所: コメントアウトを解除 ---
+        ui.togglePopulationDensityLayerBtn.addEventListener("click", function () {
+          if (populationDensityLayer) {
+            removePopulationDensityLayer();
+            ui.showMessage("人口密度表示をオフにしました。", "info");
+          } else {
+            addPopulationDensityLayer();
+            ui.showMessage("人口密度表示をオンにしました。", "info");
+          }
         });
       });
     </script>
