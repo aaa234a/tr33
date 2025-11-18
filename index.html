@@ -400,11 +400,11 @@
 
       /* ゲーム速度ボタンの調整 */
       #game-speed-control button {
-        width: calc(25% - 5px); /* 4つ並べる */
+        width: calc(33.33% - 5px); /* 3つ並べる */
         display: inline-flex; /* flexに変更 */
         margin-right: 5px;
       }
-      #game-speed-control button:last-child {
+      #game-speed-control button:nth-child(3n) {
         margin-right: 0;
       }
 
@@ -659,6 +659,75 @@
         border-color: #5a6268;
       }
 
+      /* ミッションリストのスタイル */
+      #mission-list {
+        max-height: 200px;
+        overflow-y: auto;
+        border: 1px solid #ddd;
+        border-radius: 6px;
+        padding: 8px;
+        margin-bottom: 10px;
+        background: #fff;
+      }
+      .mission-item {
+        padding: 10px;
+        margin-bottom: 8px;
+        border: 1px solid #e0e0e0;
+        border-radius: 5px;
+        background: #f9f9f9;
+        display: flex;
+        flex-direction: column;
+        gap: 5px;
+      }
+      .mission-item.completed {
+        background-color: #d4edda;
+        border-color: #28a745;
+        color: #155724;
+      }
+      .mission-item.locked {
+        background-color: #f8d7da;
+        border-color: #dc3545;
+        color: #721c24;
+        opacity: 0.7;
+      }
+      .mission-item h4 {
+        margin: 0;
+        font-size: 1.1em;
+        color: #007bff;
+      }
+      .mission-item.completed h4 {
+        color: #28a745;
+      }
+      .mission-item.locked h4 {
+        color: #dc3545;
+      }
+      .mission-item p {
+        margin: 0;
+        font-size: 0.9em;
+        color: #555;
+      }
+      .mission-progress-bar {
+        width: 100%;
+        height: 8px;
+        background-color: #e9ecef;
+        border-radius: 4px;
+        overflow: hidden;
+      }
+      .mission-progress {
+        height: 100%;
+        background-color: #007bff;
+        width: 0%;
+        transition: width 0.3s ease-in-out;
+      }
+      .mission-item.completed .mission-progress {
+        background-color: #28a745;
+      }
+      .mission-reward {
+        font-weight: bold;
+        color: #28a745;
+        font-size: 0.95em;
+      }
+
       /* モバイル対応 */
       @media (max-width: 768px) {
         /* ブレークポイントを調整 */
@@ -716,7 +785,7 @@
           font-size: 0.75em;
         }
         #game-speed-control button {
-          width: calc(25% - 4px);
+          width: calc(33.33% - 4px);
           margin-right: 4px;
         }
         #tutorial-modal {
@@ -832,6 +901,25 @@
         </button>
       </div>
 
+      <!-- 新規追加: ミッションパネル -->
+      <div id="missions-panel" class="panel">
+        <h3>ミッション</h3>
+        <div id="mission-list">
+          <!-- ミッションアイテムがここに追加される -->
+          <p style="text-align: center; color: #999; font-size: 0.9em">
+            ミッションはありません
+          </p>
+        </div>
+      </div>
+
+      <!-- 新規追加: 人口密度表示ボタン -->
+      <div id="map-overlays" class="panel">
+        <h3>マップ表示</h3>
+        <button id="toggle-population-density-layer-btn">
+          <i class="fas fa-layer-group"></i> 人口密度表示
+        </button>
+      </div>
+
       <!-- セーブ/ロードメニューを追加 -->
       <div id="save-load-menu" class="panel">
         <h3>セーブ/ロード</h3>
@@ -862,14 +950,15 @@
         <button data-speed="2" class="speed-btn">2x</button>
         <button data-speed="4" class="speed-btn">4x</button>
         <button data-speed="8" class="speed-btn">8x</button>
-        <button data-speed="10" class="speed-btn">10x</button>
-        <button data-speed="20" class="speed-btn">20x</button>
+        <button data-speed="16" class="speed-btn">16x</button>
+        <button data-speed="32" class="speed-btn">32x</button>
       </div>
     </div>
 
     <div id="finance-panel" class="panel">
       <p>資産: <span id="assets-display">$0</span></p>
       <p>時間: <span id="game-time-display">0日 00:00</span></p>
+      <p>維持費: <span id="maintenance-cost-display">$0/日</span></p>
     </div>
 
     <div id="message-bar"></div>
@@ -1057,7 +1146,12 @@
             perMeter: 2500, // 1メートルあたりの費用を増額
           },
         },
-        // revenuePerStationStop: 10000, // 駅に停車するたびに得られる基本収益 (廃止)
+        maintenanceCosts: {
+          // 新規追加: 維持費
+          perTrackMeterPerDay: 5, // 線路1mあたり1日5ドル
+          perStationPerDay: 5000, // 駅1つあたり1日5000ドル
+          perTrainPerDay: 25000, // 列車1編成あたり1日25000ドル
+        },
         passengerCapacityPerCar: 50, // 1車両あたりの乗客容量
         basePassengerGeneration: 1000, // ★修正1: 駅で生成される乗客の基本量を15から1000に増やしました
         passengerRevenuePerPerson: 100, // 1人あたりの乗客収益（降車時）
@@ -1188,6 +1282,118 @@
         gameTimeInterval: 1000, // ゲーム内時間更新間隔 (ms)
         gameTimeScale: 60, // リアル1秒がゲーム内60秒に相当
         splineSegmentsPerTrackSegment: 10, // Catmull-Rom補間でのセグメントあたりの中間点数
+
+        // 新規追加: ミッション定義
+        missions: [
+          {
+            id: "first_track",
+            title: "最初の線路",
+            description: "合計1000mの線路を建設する。",
+            type: "build_track_length",
+            target: 1000,
+            reward: 1000000,
+            unlockedBy: null,
+          },
+          {
+            id: "first_station",
+            title: "最初の駅",
+            description: "駅を1つ建設する。",
+            type: "build_station_count",
+            target: 1,
+            reward: 500000,
+            unlockedBy: "first_track",
+          },
+          {
+            id: "first_line",
+            title: "最初の路線",
+            description: "路線を1つ設定する。",
+            type: "build_line_count",
+            target: 1,
+            reward: 750000,
+            unlockedBy: "first_station",
+          },
+          {
+            id: "first_train",
+            title: "最初の列車",
+            description: "列車を1編成購入する。",
+            type: "buy_train_count",
+            target: 1,
+            reward: 1200000,
+            unlockedBy: "first_line",
+          },
+          {
+            id: "transport_100_passengers",
+            title: "乗客輸送の開始",
+            description: "合計100人の乗客を輸送する。",
+            type: "transport_passengers",
+            target: 100,
+            reward: 1500000,
+            unlockedBy: "first_train",
+          },
+          {
+            id: "expand_network_1",
+            title: "ネットワーク拡張",
+            description: "合計5000mの線路を建設する。",
+            type: "build_track_length",
+            target: 5000,
+            reward: 2000000,
+            unlockedBy: "transport_100_passengers",
+          },
+          {
+            id: "establish_3_stations",
+            title: "拠点拡大",
+            description: "駅を合計3つ建設する。",
+            type: "build_station_count",
+            target: 3,
+            reward: 1000000,
+            unlockedBy: "expand_network_1",
+          },
+          {
+            id: "reach_10m_assets",
+            title: "資産1000万ドル",
+            description: "総資産を10,000,000ドルにする。",
+            type: "reach_assets",
+            target: 10000000,
+            reward: 3000000,
+            unlockedBy: "establish_3_stations",
+          },
+          {
+            id: "transport_500_passengers",
+            title: "輸送量増加",
+            description: "合計500人の乗客を輸送する。",
+            type: "transport_passengers",
+            target: 500,
+            reward: 2500000,
+            unlockedBy: "reach_10m_assets",
+          },
+          {
+            id: "expand_network_2",
+            title: "大規模ネットワーク",
+            description: "合計10000mの線路を建設する。",
+            type: "build_track_length",
+            target: 10000,
+            reward: 3500000,
+            unlockedBy: "transport_500_passengers",
+          },
+          {
+            id: "establish_5_stations",
+            title: "主要都市接続",
+            description: "駅を合計5つ建設する。",
+            type: "build_station_count",
+            target: 5,
+            reward: 2000000,
+            unlockedBy: "expand_network_2",
+          },
+          {
+            id: "reach_25m_assets",
+            title: "資産2500万ドル",
+            description: "総資産を25,000,000ドルにする。",
+            type: "reach_assets",
+            target: 25000000,
+            reward: 5000000,
+            unlockedBy: "establish_5_stations",
+          },
+        ],
       };
 
       // --- GAME STATE: ゲームの現在の状態を保持するオブジェクト (let -> var) ---
@@ -1213,10 +1419,18 @@
         demolitionMode: false, // 解体モードかどうか
         selectedForDemolition: null, // 解体モードで選択されたオブジェクト { type: 'track'|'station', id: string }
         gameSpeedMultiplier: 1, // 新規追加: ゲーム速度倍率
-        // trainUpdateIntervalId: null, // 削除: requestAnimationFrameで管理
         passengerGenerationIntervalId: null, // 新規追加: 乗客生成setInterval ID
         gameTime: 0, // 新規追加: ゲーム内時間 (ミリ秒)
         gameTimeIntervalId: null,
+
+        // 新規追加: ミッション関連の追跡変数
+        missions: [], // アクティブなミッションのインスタンス
+        totalTrackLengthBuilt: 0,
+        totalStationsBuilt: 0,
+        totalLinesBuilt: 0,
+        totalTrainsBought: 0,
+        totalPassengersTransported: 0,
+        lastMaintenanceDay: 0, // 新規追加: 維持費徴収の最終日
       };
 
       // --- MAP: Leafletマップの初期化 ---
@@ -1236,6 +1450,9 @@
       var ui = {
         assetsDisplay: document.getElementById("assets-display"),
         gameTimeDisplay: document.getElementById("game-time-display"), // 新規追加
+        maintenanceCostDisplay: document.getElementById(
+          "maintenance-cost-display"
+        ), // 新規追加
         messageBar: document.getElementById("message-bar"),
         buildButtons: document.querySelectorAll(
           "#build-menu button:not(#confirm-build)"
@@ -1274,6 +1491,10 @@
         loadingOverlay: document.getElementById("loading-overlay"), // 新規追加
         loadingMessage: document.getElementById("loading-message"), // 新規追加
         toggleLeftPanelButton: document.getElementById("toggle-left-panel"), // 新規追加
+        missionListDiv: document.getElementById("mission-list"), // 新規追加
+        togglePopulationDensityLayerBtn: document.getElementById(
+          "toggle-population-density-layer-btn"
+        ), // 新規追加
 
         /**
          * ユーザーにメッセージを表示する。
@@ -1302,6 +1523,8 @@
         updateFinance: function () {
           this.assetsDisplay.textContent =
             "$" + Math.floor(state.assets).toLocaleString();
+          // ミッションの進行状況をチェック
+          checkMissionProgress("reach_assets");
         },
 
         /** ゲーム時間表示を更新する。 */
@@ -1316,6 +1539,8 @@
             String(hours).padStart(2, "0") +
             ":" +
             String(minutes).padStart(2, "0");
+          this.maintenanceCostDisplay.textContent =
+            "$" + Math.round(calculateDailyMaintenanceCost()).toLocaleString() + "/日";
         },
 
         /** 列車ショップのUIを更新する。 */
@@ -1585,6 +1810,67 @@
             ui.loadingOverlay.style.display = "none";
           }, 300); // transitionの時間と合わせる
         },
+
+        // 新規追加: ミッションリストのレンダリング
+        renderMissions: function () {
+          this.missionListDiv.innerHTML = "";
+          if (state.missions.length === 0) {
+            this.missionListDiv.innerHTML =
+              '<p style="text-align: center; color: #999; font-size: 0.9em">ミッションはありません</p>';
+            return;
+          }
+
+          // 未完了のミッションを優先的に表示
+          var sortedMissions = [].concat(state.missions).sort(function (a, b) {
+            if (a.isCompleted && !b.isCompleted) return 1;
+            if (!a.isCompleted && b.isCompleted) return -1;
+            return 0;
+          });
+
+          for (var i = 0; i < sortedMissions.length; i++) {
+            var mission = sortedMissions[i];
+            var missionItem = document.createElement("div");
+            missionItem.className = "mission-item";
+            if (mission.isCompleted) {
+              missionItem.classList.add("completed");
+            } else if (!mission.isActive) {
+              missionItem.classList.add("locked");
+            }
+
+            var progress = Math.min(
+              100,
+              (mission.currentProgress / mission.target) * 100
+            );
+            if (isNaN(progress)) progress = 0; // targetが0の場合のNaN対策
+
+            missionItem.innerHTML =
+              "<h4>" +
+              mission.title +
+              "</h4>" +
+              "<p>" +
+              mission.description +
+              "</p>" +
+              (mission.isCompleted
+                ? '<p class="mission-reward">完了！ 報酬: $' +
+                  mission.reward.toLocaleString() +
+                  "</p>"
+                : mission.isActive
+                ? '<p>進行状況: ' +
+                  Math.round(mission.currentProgress).toLocaleString() +
+                  " / " +
+                  mission.target.toLocaleString() +
+                  "</p>" +
+                  '<div class="mission-progress-bar"><div class="mission-progress" style="width:' +
+                  progress +
+                  '%"></div></div>' +
+                  '<p class="mission-reward">報酬: $' +
+                  mission.reward.toLocaleString() +
+                  "</p>"
+                : '<p>ロックされています (前提ミッションを完了してください)</p>');
+
+            this.missionListDiv.appendChild(missionItem);
+          }
+        },
       };
 
       // --- INITIAL LOAD ---
@@ -1596,6 +1882,7 @@
       ui.costGround.textContent = CONFIG.costs.ground.perMeter;
       ui.costViaduct.textContent = CONFIG.costs.viaduct.perMeter;
       ui.costTunnel.textContent = CONFIG.costs.tunnel.perMeter;
+      ui.renderMissions(); // 新規追加: ミッションリストの初期レンダリング
 
       // --- HELPER FUNCTIONS: 汎用ユーティリティ関数 ---
 
@@ -2117,6 +2404,19 @@
         }
       };
 
+      // 新規追加: 人口密度表示ボタン
+      ui.togglePopulationDensityLayerBtn.onclick = function () {
+        if (populationDensityLayer && map.hasLayer(populationDensityLayer)) {
+          map.removeLayer(populationDensityLayer);
+          this.classList.remove("active");
+          ui.showMessage("人口密度表示をオフにしました。", "info");
+        } else {
+          addPopulationDensityLayer();
+          this.classList.add("active");
+          ui.showMessage("人口密度表示をオンにしました。", "info");
+        }
+      };
+
       // --- PLANNING (TRACK/STATION CONSTRUCTION): 線路・駅建設モードのロジック ---
       var dragging = false; // マップドラッグ中かどうかのフラグ
 
@@ -2443,6 +2743,7 @@
             ), // 新規追加
           };
           state.stations.push(newStation);
+          state.totalStationsBuilt++; // 新規追加: ミッション進行状況更新
 
           // 駅名ツールチップをバインド
           marker.bindTooltip(newStation.name, {
@@ -2532,6 +2833,7 @@
                 2500
               );
               ui.renderTrainShop();
+              checkMissionProgress("build_station_count"); // 新規追加: ミッション進行状況更新
             })
             .catch(function (error) {
               console.error("地名APIの取得に失敗しました:", error);
@@ -2551,6 +2853,7 @@
                 false,
                 2500
               );
+              checkMissionProgress("build_station_count"); // 新規追加: ミッション進行状況更新
             });
         } else {
           // 線路建設
@@ -2576,6 +2879,7 @@
             sleeperLayer: sleeperLayer, // レイヤーを分割
             type: type,
           });
+          state.totalTrackLengthBuilt += len; // 新規追加: ミッション進行状況更新
 
           railLayer.on("click", function (e) {
             e.originalEvent.stopPropagation();
@@ -2599,6 +2903,7 @@
             false,
             2000
           );
+          checkMissionProgress("build_track_length"); // 新規追加: ミッション進行状況更新
         }
 
         if (state.planning.ghost) {
@@ -2672,11 +2977,13 @@
           maxCapacity: trainToBuyConfig.cars * CONFIG.passengerCapacityPerCar, // 新規追加: 最大乗客容量
         };
         state.trains.push(newTrain);
+        state.totalTrainsBought++; // 新規追加: ミッション進行状況更新
 
         ui.updateFinance();
         ui.showMessage(trainToBuyConfig.name + "を購入しました！", "success", false, 2000);
         state.selectedTrainToBuyId = null;
         ui.renderTrainShop();
+        checkMissionProgress("buy_train_count"); // 新規追加: ミッション進行状況更新
         // renderTrains(); // 列車が割り当てられたらレンダリングを更新 (gameLoopで自動的に行われる)
       }
 
@@ -3055,6 +3362,7 @@
           totalTrainsOnLine: 0, // 新規追加: 路線上の総列車数
           totalCarsOnLine: 0, // 新規追加: 路線上の総車両数
         });
+        state.totalLinesBuilt++; // 新規追加: ミッション進行状況更新
 
         ui.updateFinance();
         ui.showMessage(
@@ -3070,6 +3378,7 @@
         );
         cancelLineBuilding();
         ui.renderTrainShop();
+        checkMissionProgress("build_line_count"); // 新規追加: ミッション進行状況更新
       }
 
       /** 路線設定をキャンセルする。 */
@@ -3228,6 +3537,9 @@
           map.removeLayer(trackToDemolish.railLayer);
           map.removeLayer(trackToDemolish.sleeperLayer);
           state.tracks.splice(trackIndex, 1);
+          state.totalTrackLengthBuilt -= calculatePathDistance(
+            trackToDemolish.latlngs
+          ); // ミッション進行状況更新
           ui.showMessage("線路を解体しました。", "success", false, 2000);
 
           // この線路を使用していた可能性のある全ての路線を再検証・削除
@@ -3264,6 +3576,7 @@
             map.removeLayer(stationToDemolish.marker.getTooltip());
           } // ツールチップも削除
           state.stations.splice(stationIndex, 1);
+          state.totalStationsBuilt--; // ミッション進行状況更新
           ui.showMessage(
             stationToDemolish.name + "を解体しました。",
             "success",
@@ -3282,6 +3595,10 @@
 
         cancelDemolition();
         ui.renderTrainShop();
+        ui.updateFinance(); // 資産表示更新
+        ui.updateGameTimeDisplay(); // 維持費表示更新
+        checkMissionProgress("build_track_length"); // ミッション進行状況更新
+        checkMissionProgress("build_station_count"); // ミッション進行状況更新
       }
 
       /** 路線を削除するヘルパー関数 */
@@ -3320,6 +3637,7 @@
 
         map.removeLayer(lineToRemove.layer);
         state.lines.splice(lineIndex, 1);
+        state.totalLinesBuilt--; // ミッション進行状況更新
         ui.showMessage(
           "路線 " + lineToRemove.name + " が削除されました。",
           "info",
@@ -3327,6 +3645,7 @@
           3000
         );
         ui.renderTrainShop(); // 列車ショップも更新して、割り当て解除を反映
+        checkMissionProgress("build_line_count"); // ミッション進行状況更新
       }
 
       /** 解体モードをキャンセルする。 */
@@ -3518,6 +3837,8 @@
               false,
               2000
             );
+            state.totalPassengersTransported += passengersDisembarked; // 新規追加: ミッション進行状況更新
+            checkMissionProgress("transport_passengers"); // 新規追加: ミッション進行状況更新
           }
 
           // --- 乗客の乗車処理 (最適化) ---
@@ -3723,11 +4044,41 @@
       }
 
       /**
+       * 1日あたりの維持費を計算する。
+       * @returns {number} 1日あたりの維持費。
+       */
+      function calculateDailyMaintenanceCost() {
+        var cost = 0;
+        cost +=
+          state.totalTrackLengthBuilt * CONFIG.maintenanceCosts.perTrackMeterPerDay;
+        cost += state.stations.length * CONFIG.maintenanceCosts.perStationPerDay;
+        cost += state.trains.length * CONFIG.maintenanceCosts.perTrainPerDay;
+        return cost;
+      }
+
+      /**
        * ゲーム内時間を更新する。
        */
       function updateGameTime() {
+        var prevDay = Math.floor(state.gameTime / (24 * 60 * 60000)); // 1日=24時間=1440分=86400秒=86400000ミリ秒
         state.gameTime +=
           CONFIG.gameTimeInterval * state.gameSpeedMultiplier * CONFIG.gameTimeScale;
+        var currentDay = Math.floor(state.gameTime / (24 * 60 * 60000));
+
+        if (currentDay > prevDay && currentDay > state.lastMaintenanceDay) {
+          // 日が変わり、かつ前回の徴収日より進んでいれば維持費を徴収
+          var dailyCost = calculateDailyMaintenanceCost();
+          state.assets -= dailyCost;
+          state.lastMaintenanceDay = currentDay;
+          ui.showMessage(
+            "今日の維持費: $" + dailyCost.toLocaleString(),
+            "warning",
+            false,
+            3000
+          );
+          ui.updateFinance(); // 資産表示を更新
+        }
+
         ui.updateGameTimeDisplay();
       }
 
@@ -3961,7 +4312,8 @@
                   train.currentPassengers.length +
                   "/" +
                   train.maxCapacity +
-                  "人";
+                  "人" +
+                  (train.isStopped ? "<br><b>停車中</b>" : ""); // 新規追加: 停車中表示
                 if (!carMarker.getPopup()) {
                   carMarker.bindPopup(popupContent);
                 } else {
@@ -3981,8 +4333,8 @@
       function deserializeLatLng(obj) {
         return obj ? L.latLng(obj.lat, obj.lng) : null;
       }
-      function serializeLatLngs(latlngs) {
-        return (latlngs || []).map(serializeLatLng);
+      function serializeLatLngs(arr) {
+        return (arr || []).map(serializeLatLng);
       }
       function deserializeLatLngs(arr) {
         return (arr || []).map(deserializeLatLng);
@@ -4058,6 +4410,15 @@
           currentLineColorIndex: state.currentLineColorIndex,
           gameSpeedMultiplier: state.gameSpeedMultiplier,
           gameTime: state.gameTime, // ゲーム時間を保存
+
+          // 新規追加: ミッション関連の保存
+          missions: state.missions,
+          totalTrackLengthBuilt: state.totalTrackLengthBuilt,
+          totalStationsBuilt: state.totalStationsBuilt,
+          totalLinesBuilt: state.totalLinesBuilt,
+          totalTrainsBought: state.totalTrainsBought,
+          totalPassengersTransported: state.totalPassengersTransported,
+          lastMaintenanceDay: state.lastMaintenanceDay,
         };
       }
 
@@ -4133,10 +4494,18 @@
           demolitionMode: false,
           selectedForDemolition: null,
           gameSpeedMultiplier: loadedState.gameSpeedMultiplier || 1,
-          // trainUpdateIntervalId: null, // 削除
           passengerGenerationIntervalId: null,
           gameTime: loadedState.gameTime || 0, // ゲーム時間をロード
           gameTimeIntervalId: null,
+
+          // 新規追加: ミッション関連のロード
+          missions: loadedState.missions || [],
+          totalTrackLengthBuilt: loadedState.totalTrackLengthBuilt || 0,
+          totalStationsBuilt: loadedState.totalStationsBuilt || 0,
+          totalLinesBuilt: loadedState.totalLinesBuilt || 0,
+          totalTrainsBought: loadedState.totalTrainsBought || 0,
+          totalPassengersTransported: loadedState.totalPassengersTransported || 0,
+          lastMaintenanceDay: loadedState.lastMaintenanceDay || 0,
         };
 
         var i;
@@ -4314,6 +4683,7 @@
         ui.updateFinance();
         ui.updateGameTimeDisplay(); // ゲーム時間も更新
         ui.renderTrainShop();
+        ui.renderMissions(); // 新規追加: ミッションリストも更新
         renderTrains(); // ロード直後に列車を描画
         setGameSpeed(state.gameSpeedMultiplier); // ロード後にゲーム速度を再設定
         return true;
@@ -4501,7 +4871,7 @@
           }
 
           // 人口密度レイヤーを初期表示
-          // addPopulationDensityLayer();
+          // addPopulationDensityLayer(); // 初期表示はオフにする
         } catch (error) {
           console.error("人口密度TIFFの読み込みに失敗しました:", error);
           ui.showMessage(
@@ -4591,12 +4961,12 @@
 
         station.revenueMultiplier = multiplier;
 
+        // 新規追加: 駅のポップアップに待機乗客数と最大待機乗客数、人口密度を表示
         if (station.marker && station.marker.getPopup()) {
-          // ★修正5: 駅のポップアップに待機乗客数と最大待機乗客数を表示
           station.marker
             .getPopup()
             .setContent(
-              `<b>${station.name}</b><br>ID: ${station.id}<br>` +
+              `<b>${station.name}</b><br>` +
                 `プラットフォーム長: ${station.platformLength.toFixed(
                   1
                 )}m<br>` +
@@ -4679,6 +5049,126 @@
       }
 
       // ===================================================================
+      // ミッションシステム機能
+      // ===================================================================
+
+      /**
+       * ゲーム開始時に初期ミッションをアクティブにする。
+       */
+      function initializeMissions() {
+        for (var i = 0; i < CONFIG.missions.length; i++) {
+          var missionConfig = CONFIG.missions[i];
+          if (!missionConfig.unlockedBy) {
+            // 前提条件がないミッションをアクティブにする
+            state.missions.push({
+              id: missionConfig.id,
+              title: missionConfig.title,
+              description: missionConfig.description,
+              type: missionConfig.type,
+              target: missionConfig.target,
+              currentProgress: 0,
+              reward: missionConfig.reward,
+              isCompleted: false,
+              isActive: true,
+              unlockedBy: null,
+            });
+          } else {
+            // ロックされたミッションとして追加
+            state.missions.push({
+              id: missionConfig.id,
+              title: missionConfig.title,
+              description: missionConfig.description,
+              type: missionConfig.type,
+              target: missionConfig.target,
+              currentProgress: 0,
+              reward: missionConfig.reward,
+              isCompleted: false,
+              isActive: false,
+              unlockedBy: missionConfig.unlockedBy,
+            });
+          }
+        }
+        ui.renderMissions();
+      }
+
+      /**
+       * ミッションの進行状況をチェックし、更新する。
+       * @param {string} missionType - チェックするミッションのタイプ。
+       */
+      function checkMissionProgress(missionType) {
+        var progressValue = 0;
+        switch (missionType) {
+          case "build_track_length":
+            progressValue = state.totalTrackLengthBuilt;
+            break;
+          case "build_station_count":
+            progressValue = state.totalStationsBuilt;
+            break;
+          case "build_line_count":
+            progressValue = state.totalLinesBuilt;
+            break;
+          case "buy_train_count":
+            progressValue = state.totalTrainsBought;
+            break;
+          case "transport_passengers":
+            progressValue = state.totalPassengersTransported;
+            break;
+          case "reach_assets":
+            progressValue = state.assets;
+            break;
+          default:
+            return;
+        }
+
+        for (var i = 0; i < state.missions.length; i++) {
+          var mission = state.missions[i];
+          if (
+            mission.type === missionType &&
+            mission.isActive &&
+            !mission.isCompleted
+          ) {
+            mission.currentProgress = progressValue;
+            if (mission.currentProgress >= mission.target) {
+              mission.isCompleted = true;
+              state.assets += mission.reward;
+              ui.showMessage(
+                "ミッション完了: " +
+                  mission.title +
+                  "！ 報酬: $" +
+                  mission.reward.toLocaleString(),
+                "success",
+                false,
+                5000
+              );
+              ui.updateFinance();
+              unlockNextMissions(mission.id); // 次のミッションをアンロック
+            }
+          }
+        }
+        ui.renderMissions(); // UIを更新
+      }
+
+      /**
+       * 完了したミッションに基づいて次のミッションをアンロックする。
+       * @param {string} completedMissionId - 完了したミッションのID。
+       */
+      function unlockNextMissions(completedMissionId) {
+        for (var i = 0; i < state.missions.length; i++) {
+          var mission = state.missions[i];
+          if (mission.unlockedBy === completedMissionId && !mission.isActive) {
+            mission.isActive = true;
+            ui.showMessage(
+              "新しいミッションがアンロックされました: " + mission.title,
+              "info",
+              false,
+              4000
+            );
+          }
+        }
+        ui.renderMissions();
+      }
+
+      // ===================================================================
       // チュートリアル機能
       // ===================================================================
       var tutorialSteps = [
@@ -4713,14 +5203,19 @@
           text: "「解体モード」では、建設済みの線路や駅を撤去できます。不要な施設を整理し、都市計画を見直しましょう。",
         },
         {
-          title: "6. 資金と時間",
-          icon: "fas fa-dollar-sign",
-          text: "右上の「資産」と「時間」はゲームの進行状況を示します。乗客を運び、収益を上げて資産を増やしましょう。ゲーム速度も調整できます。",
+          title: "6. ミッション",
+          icon: "fas fa-scroll",
+          text: "左側の「ミッション」パネルで、達成すべき目標を確認できます。ミッションをクリアすると報酬が得られます。ゲームの進行に合わせて新しいミッションがアンロックされます。",
         },
         {
-          title: "7. 人口密度と収益",
-          icon: "fas fa-users",
-          text: "駅周辺の人口密度が高いほど、より多くの乗客が生成され、収益も増加します。人口密度の高い地域に駅を建設するのがおすすめです。",
+          title: "7. 人口密度表示",
+          icon: "fas fa-layer-group",
+          text: "左側の「マップ表示」にある「人口密度表示」ボタンで、マップ上の人口密度を可視化できます。人口密度の高い地域は、より多くの乗客と収益をもたらします。",
+        },
+        {
+          title: "8. 資金、時間、維持費",
+          icon: "fas fa-dollar-sign",
+          text: "右上の「資産」はあなたの資金です。ゲーム内時間で1日ごとに、線路、駅、列車の「維持費」が自動的に徴収されます。収益と維持費のバランスを考えて経営しましょう。",
         },
         {
           title: "ゲーム開始！",
@@ -4810,6 +5305,7 @@
       // --- INITIAL LOAD ---
       document.addEventListener("DOMContentLoaded", function () {
         loadPopulationDensityTiff().then(function () {
+          initializeMissions(); // 新規追加: ミッションを初期化
           setGameSpeed(1); // 初期速度は1倍
           initTutorial(); // チュートリアルを初期化
           requestAnimationFrame(gameLoop); // ゲームループを開始
